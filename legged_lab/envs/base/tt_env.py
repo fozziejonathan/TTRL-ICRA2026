@@ -840,6 +840,20 @@ class TTEnv(VecEnv):
                     f"(n={int(vals.numel())}); running mean over all serves: "
                     f"{avg_so_far:.4f}m; hit threshold: {hit_thresh:.4f}m"
                 )
+                # If env 0 just had a serve end, dump its miss vector so we can
+                # tell which axis the robot is short on (world coords).
+                env_ids_cpu = env_ids.detach().to("cpu")
+                if int((env_ids_cpu == 0).any().item()) and hasattr(self, "_dbg_closest_ball_w"):
+                    bp = self._dbg_closest_ball_w[0].detach().to("cpu").tolist()
+                    pp = self._dbg_closest_paddle_w[0].detach().to("cpu").tolist()
+                    rp = self._dbg_closest_robot_w[0].detach().to("cpu").tolist()
+                    dv = [bp[i] - pp[i] for i in range(3)]
+                    print(
+                        f"[ClosestPass:env0] ball_w=({bp[0]:.3f},{bp[1]:.3f},{bp[2]:.3f}) "
+                        f"paddle_w=({pp[0]:.3f},{pp[1]:.3f},{pp[2]:.3f}) "
+                        f"robot_w=({rp[0]:.3f},{rp[1]:.3f},{rp[2]:.3f}) "
+                        f"ball-paddle=({dv[0]:+.3f},{dv[1]:+.3f},{dv[2]:+.3f})"
+                    )
         except Exception:
             pass
 
@@ -1069,7 +1083,22 @@ class TTEnv(VecEnv):
         self.paddel_ball_distance = distance
         # Track closest-pass per serve regardless of whether the hit threshold
         # was crossed. Cheap and only printed once per ball reset.
-        self.min_paddle_ball_distance = torch.minimum(self.min_paddle_ball_distance, distance)
+        improved = distance < self.min_paddle_ball_distance
+        self.min_paddle_ball_distance = torch.where(improved, distance, self.min_paddle_ball_distance)
+        # Also snapshot ball/paddle positions for env 0 on its closest pass so
+        # we can see which axis the miss is on (in front/behind/above/aside).
+        if not hasattr(self, "_dbg_closest_ball_w"):
+            self._dbg_closest_ball_w = torch.zeros(self.num_envs, 3, device=self.device)
+            self._dbg_closest_paddle_w = torch.zeros(self.num_envs, 3, device=self.device)
+            self._dbg_closest_robot_w = torch.zeros(self.num_envs, 3, device=self.device)
+        if improved.any():
+            ids = torch.nonzero(improved, as_tuple=False).squeeze(-1)
+            self._dbg_closest_ball_w[ids] = self.ball_global_pos[ids]
+            self._dbg_closest_paddle_w[ids] = self.paddle_touch_point[ids]
+            try:
+                self._dbg_closest_robot_w[ids] = self.robot.data.root_link_pos_w[ids]
+            except Exception:
+                pass
         contact_score = (
             self.cfg.ball.contact_threshold - distance
         ) / self.cfg.ball.contact_threshold
