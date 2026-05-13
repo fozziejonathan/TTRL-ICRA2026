@@ -340,6 +340,16 @@ class TTEnv(VecEnv):
         self.has_touch_paddle_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.ball_landing_dis_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.ball_contact_rew = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
+        # Diagnostics: closest the (phantom) paddle came to the ball during the
+        # current serve. Reset to +inf on each ball reset; updated every step
+        # from `paddel_ball_distance`; printed in compute_intermediate_values
+        # when `ball_reset_ids` fires so we can see if eval misses by 1 cm or 1 m.
+        self.min_paddle_ball_distance = torch.full(
+            (self.num_envs,), float("inf"), device=self.device, dtype=torch.float
+        )
+        # Counters for the running-average closest-pass diagnostic.
+        self._dbg_closest_sum = 0.0
+        self._dbg_closest_count = 0
         self.has_first_bounce = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.has_first_bounce_prev = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self.has_touch_own_table = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
@@ -812,7 +822,30 @@ class TTEnv(VecEnv):
         """Reset only the ball state for specified environments."""
         if len(env_ids) == 0:
             return
-            
+
+        # --- Diagnostic: log closest-pass distance for serves that ended ---
+        try:
+            finite_mask = torch.isfinite(self.min_paddle_ball_distance[env_ids])
+            if finite_mask.any():
+                vals = self.min_paddle_ball_distance[env_ids][finite_mask].detach().to("cpu")
+                self._dbg_closest_sum += float(vals.sum().item())
+                self._dbg_closest_count += int(vals.numel())
+                avg_so_far = (
+                    self._dbg_closest_sum / max(1, self._dbg_closest_count)
+                )
+                hit_thresh = float(self.cfg.ball.contact_threshold)
+                print(
+                    f"[ClosestPass] this batch: min={float(vals.min().item()):.4f}m "
+                    f"max={float(vals.max().item()):.4f}m mean={float(vals.mean().item()):.4f}m "
+                    f"(n={int(vals.numel())}); running mean over all serves: "
+                    f"{avg_so_far:.4f}m; hit threshold: {hit_thresh:.4f}m"
+                )
+        except Exception:
+            pass
+
+        # Reset the closest-pass tracker for these envs (start of next serve).
+        self.min_paddle_ball_distance[env_ids] = float("inf")
+
         # Reset ball-related buffers for these environments
         self.has_touch_paddle[env_ids] = False
         self.ball_landing_dis_rew[env_ids] = False
@@ -1034,6 +1067,9 @@ class TTEnv(VecEnv):
 
         distance = torch.norm(self.ball_global_pos - self.paddle_touch_point, dim=1) - 0.02 # corrected for ball radius
         self.paddel_ball_distance = distance
+        # Track closest-pass per serve regardless of whether the hit threshold
+        # was crossed. Cheap and only printed once per ball reset.
+        self.min_paddle_ball_distance = torch.minimum(self.min_paddle_ball_distance, distance)
         contact_score = (
             self.cfg.ball.contact_threshold - distance
         ) / self.cfg.ball.contact_threshold
