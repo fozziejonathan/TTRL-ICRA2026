@@ -110,6 +110,25 @@ def play():
         runner = OnPolicyPredictorRegressionRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
     else:
         runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+        # If the checkpoint contains predictor weights but eval was started
+        # without `--predictor`, the actor will get a constant-zero
+        # `ball_prediction` (and a nonsense `rel_target_xy`) for the whole
+        # session, which silently tanks hit rate. Detect and warn loudly.
+        try:
+            ckpt_peek = torch.load(resume_path, map_location="cpu", weights_only=False)
+            if isinstance(ckpt_peek, dict) and "pred_state_dict" in ckpt_peek:
+                print(
+                    "\n[WARN] This checkpoint was trained with the predictor "
+                    "runner (it contains `pred_state_dict`), but you did NOT "
+                    "pass `--predictor`. The actor was trained with a real "
+                    "ball prediction in its observation; running eval without "
+                    "the predictor feeds it zeros instead and will produce "
+                    "dramatically lower hit/success rates. Re-run with "
+                    "`--predictor` for correct results.\n"
+                )
+            del ckpt_peek
+        except Exception:
+            pass
     runner.load(resume_path, load_optimizer=False)
 
     policy = runner.get_inference_policy(device=env.device)
