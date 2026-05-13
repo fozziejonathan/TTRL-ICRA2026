@@ -19,8 +19,15 @@ from legged_lab.envs.t1_tt.t1_tt_config import (
     T1TableTennisAgentCfg,
     T1TT_EvalEnvCfg,
 )
+from legged_lab.envs.k1_tt.k1_tt_config import (
+    K1TableTennisEnvCfg,
+    K1TableTennisAgentCfg,
+    K1TT_EvalEnvCfg,
+)
 
 
 from legged_lab.utils.task_registry import task_registry
 task_registry.register("t1_tt", TTEnv, T1TableTennisEnvCfg(), T1TableTennisAgentCfg()) #TTEnv
-task_registry.register("t1_tt_eval", TTEnv, T1TT_EvalEnvCfg(), T1TableTennisAgentCfg()) 
+task_registry.register("t1_tt_eval", TTEnv, T1TT_EvalEnvCfg(), T1TableTennisAgentCfg())
+task_registry.register("k1_tt", TTEnv, K1TableTennisEnvCfg(), K1TableTennisAgentCfg())
+task_registry.register("k1_tt_eval", TTEnv, K1TT_EvalEnvCfg(), K1TableTennisAgentCfg())

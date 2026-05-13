@@ -19,9 +19,16 @@ from isaaclab_rl.rsl_rl import (  # noqa:F401
     RslRlOnPolicyRunnerCfg,
     RslRlPpoActorCriticCfg,
     RslRlPpoAlgorithmCfg,
-    RslRlRndCfg,
-    RslRlSymmetryCfg,
 )
+# Optional: see legged_lab/envs/base/base_env_config.py for explanation.
+try:  # noqa:F401
+    from isaaclab_rl.rsl_rl import RslRlRndCfg  # type: ignore
+except ImportError:
+    RslRlRndCfg = None  # type: ignore
+try:  # noqa:F401
+    from isaaclab_rl.rsl_rl import RslRlSymmetryCfg  # type: ignore
+except ImportError:
+    RslRlSymmetryCfg = None  # type: ignore
 
 import legged_lab.mdp as mdp
 
@@ -271,7 +278,7 @@ class TTAgentCfg(RslRlOnPolicyRunnerCfg):
     policy = RslRlPpoActorCriticCfg(
         class_name="ActorCritic",
         init_noise_std=1.0,
-        noise_std_type="scalar",
+        # noise_std_type="scalar",  # added in Isaac Lab >= 2.2; "scalar" is the default
         actor_hidden_dims=[512, 512, 128],
         critic_hidden_dims=[512, 512, 128],
         activation="elu",
@@ -290,9 +297,12 @@ class TTAgentCfg(RslRlOnPolicyRunnerCfg):
         lam=0.95,
         desired_kl=0.01,
         max_grad_norm=1.0,
-        normalize_advantage_per_mini_batch=False,
-        symmetry_cfg=None,  # RslRlSymmetryCfg()
-        rnd_cfg=None,  # RslRlRndCfg()
+        # The kwargs below only exist on Isaac Lab >= 2.2; commented out so the
+        # cfg also works against stock Isaac Lab 2.1.0. Their values match the
+        # implicit default behavior in older versions.
+        # normalize_advantage_per_mini_batch=False,
+        # symmetry_cfg=None,  # RslRlSymmetryCfg()
+        # rnd_cfg=None,       # RslRlRndCfg()
     )
     clip_actions = None
     save_interval = 100

@@ -297,6 +297,118 @@ BOOSTER_T1_TT_P_CFG = ArticulationCfg(
 )
 """Configuration for the Booster T1 Humanoid robot for Table Tennis, changed default joint positions"""
 
+
+BOOSTER_K1_TT_CFG = ArticulationCfg(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=f"{ISAAC_ASSET_DIR}/booster/K1_TT/K1_TT.usd",
+        activate_contact_sensors=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=False, solver_position_iteration_count=8, solver_velocity_iteration_count=4
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(-1.6, 0.0, 0.72),
+        joint_pos={
+            "AAHead_yaw": 0.0,
+            "Head_pitch": 0.0,
+            ".*_Shoulder_Pitch": 0.2,
+            "Left_Shoulder_Roll": -1.35,
+            "Right_Shoulder_Roll": -0.1,
+            "Left_Elbow_Pitch": 0.0,
+            "Right_Elbow_Pitch": 0.2,
+            "Left_Elbow_Yaw": -0.5,
+            "Right_Elbow_Yaw": 0.5,
+            ".*_Hip_Pitch": -0.20,
+            ".*_Hip_Roll": 0.0,
+            ".*_Hip_Yaw": 0.0,
+            ".*_Knee_Pitch": 0.42,
+            ".*_Ankle_Pitch": -0.23,
+            ".*_Ankle_Roll": 0.0,
+        },
+        joint_vel={".*": 0.0},
+    ),
+    soft_joint_pos_limit_factor=0.9,
+    actuators={
+        "legs": ImplicitActuatorCfg(
+            joint_names_expr=[
+                ".*_Hip_Pitch",
+                ".*_Hip_Roll",
+                ".*_Hip_Yaw",
+                ".*_Knee_Pitch",
+            ],
+            effort_limit={
+                ".*_Hip_Pitch": 30.0,
+                ".*_Hip_Roll": 35.0,
+                ".*_Hip_Yaw": 20.0,
+                ".*_Knee_Pitch": 40.0,
+            },
+            velocity_limit={
+                ".*_Hip_Pitch": 7.1,
+                ".*_Hip_Roll": 12.9,
+                ".*_Hip_Yaw": 18.1,
+                ".*_Knee_Pitch": 12.5,
+            },
+            stiffness=200.0,  # TODO tune for K1
+            damping=5.0,      # TODO tune for K1
+            armature=0.01,
+        ),
+        "feet": ImplicitActuatorCfg(
+            joint_names_expr=[".*_Ankle_Pitch", ".*_Ankle_Roll"],
+            effort_limit={".*_Ankle_Pitch": 20.0, ".*_Ankle_Roll": 20.0},
+            velocity_limit={".*_Ankle_Pitch": 18.1, ".*_Ankle_Roll": 18.1},
+            stiffness=50.0,  # TODO tune for K1
+            damping=1.0,     # TODO tune for K1
+            armature=0.01,
+        ),
+        # K1 shoulder pitch joints are named ALeft_Shoulder_Pitch / ARight_Shoulder_Pitch.
+        # ".*_Shoulder_Pitch" matches both A-prefixed names AND the roll/elbow variants by
+        # accident is avoided here because only Shoulder_Pitch ends with that suffix.
+        "arms": ImplicitActuatorCfg(
+            joint_names_expr=[
+                ".*_Shoulder_Pitch",
+                ".*_Shoulder_Roll",
+                ".*_Elbow_Pitch",
+                ".*_Elbow_Yaw",
+            ],
+            effort_limit=14.0,
+            velocity_limit=18.0,
+            stiffness=40.0,  # TODO tune for K1
+            damping=10.0,    # TODO tune for K1
+            armature=0.01,
+        ),
+        # Head joints are not policy-controlled but we hold them at default with a stiff PD
+        # so the head doesn't flop around. Drop this group if you'd rather leave them passive.
+        "head": ImplicitActuatorCfg(
+            joint_names_expr=["AAHead_yaw", "Head_pitch"],
+            effort_limit=6.0,
+            velocity_limit=18.0,
+            stiffness=20.0,  # TODO tune for K1
+            damping=2.0,     # TODO tune for K1
+            armature=0.01,
+        ),
+    },
+)
+"""Configuration for the Booster K1 (22-DoF) Humanoid robot for Table Tennis.
+
+Joint set differs from T1: no Waist, shoulder pitch joints are prefixed `ALeft_*` /
+`ARight_*` in the URDF/USD, and head joints (`AAHead_yaw`, `Head_pitch`) live in their
+own actuator group because the K1 TT policy outputs only 20 joints (head excluded).
+
+Effort/velocity limits taken from booster_assets/robots/K1/K1_22dof/K1_22dof.urdf.
+Stiffness/damping copied from T1 as a starting point; tune per joint group after the
+first training run.
+"""
+
+
 BOOSTER_T1_TT_P2_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=f"{ISAAC_ASSET_DIR}/booster/T1_TT/T1_TT.usd",

@@ -18,6 +18,12 @@ import isaaclab.utils.math as math_utils
 import torch
 from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
+
+# `quat_apply_inverse` was added in Isaac Lab >= 2.2 (it's equivalent to
+# `quat_rotate_inverse`, which is what 2.1.0 ships). Aliasing here so the rest
+# of the file works against either Isaac Lab version.
+if not hasattr(math_utils, "quat_apply_inverse") and hasattr(math_utils, "quat_rotate_inverse"):
+    math_utils.quat_apply_inverse = math_utils.quat_rotate_inverse  # type: ignore[attr-defined]
 from isaaclab.sensors import ContactSensor
 from typing import Optional
 

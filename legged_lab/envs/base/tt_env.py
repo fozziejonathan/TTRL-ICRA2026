@@ -344,7 +344,19 @@ class TTEnv(VecEnv):
         self.robot_future_vel = torch.zeros(self.num_envs, 3, device=self.device)
 
         self.paddle_touch_point = torch.zeros(self.num_envs, 3, device=self.device)
-        self.robot.write_joint_effort_limit_to_sim(self.robot.data.joint_effort_limits[:, self.action_joint_ids] * self.cfg.robot.effort_limit_scale, self.action_joint_ids)
+        # Apply effort_limit_scale on top of the current per-joint effort limits.
+        # `ArticulationData.joint_effort_limits` was added in Isaac Lab >= 2.2; on
+        # 2.1.0 we read the current limits straight from the PhysX view instead.
+        if hasattr(self.robot.data, "joint_effort_limits"):
+            current_effort_limits = self.robot.data.joint_effort_limits
+        else:
+            current_effort_limits = (
+                self.robot.root_physx_view.get_dof_max_forces().to(self.device).clone()
+            )
+        self.robot.write_joint_effort_limit_to_sim(
+            current_effort_limits[:, self.action_joint_ids] * self.cfg.robot.effort_limit_scale,
+            self.action_joint_ids,
+        )
 
         self.init_obs_buffer()
         # --- Quadratic-drag model constant for ball dynamics (scalar k) ---
@@ -843,7 +855,17 @@ class TTEnv(VecEnv):
         self.ball_global_pos = self.ball.data.root_pos_w 
 
         # --- Compute Paddle Position and Contact ---
-        paddle_index = 15  # paddle belongs to 'right_hand_link'
+        # The paddle is rigidly attached as a child Xform of `right_hand_link`, so we use
+        # that link's body pose. We cache the body index once because the robot's body
+        # order can differ between T1 (where this happened to be index 15) and K1.
+        if not hasattr(self, "_paddle_body_index"):
+            ids, _ = self.robot.find_bodies("right_hand_link")
+            if not ids:
+                raise RuntimeError(
+                    "compute_paddle_touch: 'right_hand_link' not found on the articulation"
+                )
+            self._paddle_body_index = ids[0]
+        paddle_index = self._paddle_body_index
         paddle_pos = self.robot.data.body_pos_w[:, paddle_index, :]
         # print("paddle_pos: ", paddle_pos[0, :])
         # print("ball_pos: ", self.ball_global_pos[0,:])

@@ -1,12 +1,41 @@
 import argparse
+import sys
 
 from isaaclab.app import AppLauncher
 import legged_lab.utils.cli_args as cli_args
+
+
+def _append_win_viewport_stability_flags() -> None:
+    """Match tools/isaacsim_4.5_hover.cmd: D3D12 + TLAS caps reduce hybrid-GPU Vulkan viewport crashes."""
+    if sys.platform != "win32":
+        return
+    if "--headless" in sys.argv:
+        return
+
+    def _has_flag_prefix(prefix: str) -> bool:
+        return any(a == prefix or a.startswith(prefix + "=") for a in sys.argv)
+
+    for flag in (
+        "--/app/vulkan=false",
+        "--/rtx-transient/scenedb/maxInstancesLimit=262144",
+        "--/rtx-transient/scenedb/forceMaxTLASInstancesLimit=false",
+    ):
+        key = flag.split("=", 1)[0]
+        if not _has_flag_prefix(key):
+            sys.argv.append(flag)
+
+
+_append_win_viewport_stability_flags()
 
 parser = argparse.ArgumentParser(description="Preview a Legged Lab environment in Isaac Sim.")
 parser.add_argument("--task", type=str, required=True, help="Name of the task to preview (e.g., 'Anymal-C-Flat').")
 parser.add_argument("--num_envs", type=int, default=4, help="Number of environments to display.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
+parser.add_argument(
+    "--record",
+    action="store_true",
+    help="Enable Replicator-based RGB recording (imports heavy deps; omit for a simple viewport preview).",
+)
 
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -20,10 +49,6 @@ from legged_lab.envs import *
 from legged_lab.utils.cli_args import update_rsl_rl_cfg
 import torch
 
-# !Recorder : BEGIN
-import carb
-from legged_lab.utils.data_recorder.frame_recorder import FrameRecorder, ensure_world_camera
-# !Recorder : END
 
 def main():
     """A simple script to preview a legged lab environment."""
@@ -46,22 +71,38 @@ def main():
         agent_cfg.seed = seed
     
     env = env_class(cfg=env_cfg, headless=False)
-    
-    # !Recorder : BEGIN
-    camera_paths = [ensure_world_camera("/OmniverseKit_Persp")] # ! Image Recorder
-    rgb_rec = FrameRecorder(
-        camera_prim_paths=camera_paths,
-        output_root="_rgb_recordings",
-    )
-    rgb_rec.start()
+
+    rgb_rec = None
+    if args_cli.record:
+        from legged_lab.utils.data_recorder.frame_recorder import FrameRecorder, ensure_world_camera
+
+        camera_paths = [ensure_world_camera("/OmniverseKit_Persp")]
+        rgb_rec = FrameRecorder(
+            camera_prim_paths=camera_paths,
+            output_root="_rgb_recordings",
+        )
+        rgb_rec.start()
     env.sim.set_camera_view([-3.0, 6.0, 1.0], [-3.0, 0.0, 1.0])
-    # !Recorder : END
+
+    print(
+        "Preview: full task scene (robot + table + ball for TT tasks). "
+        "Zero actions; close the Isaac window or interrupt to exit."
+    )
 
     try:
         num_actions = env.num_actions
     except AttributeError:
-        num_actions = 22 # ! Booster T1
-        print(f"[WARN] env.num_actions not found. Falling back to dummy value: {num_actions}")
+        # Fall back to the env cfg's robot.num_actions, which is robot-specific
+        # (T1 TT = 21, K1 TT = 20, T1 locomotion = 22, etc.). A hard-coded value
+        # silently mis-sizes the dummy action tensor for any robot whose policy
+        # width doesn't match it.
+        num_actions = getattr(getattr(env_cfg, "robot", None), "num_actions", None)
+        if num_actions is None:
+            raise RuntimeError(
+                "preview.py: neither env.num_actions nor env_cfg.robot.num_actions is set; "
+                "cannot construct a dummy action tensor."
+            )
+        print(f"[WARN] env.num_actions not found. Using env_cfg.robot.num_actions = {num_actions}")
 
     dummy_actions = torch.zeros(args_cli.num_envs, num_actions, device=env.device)
     while simulation_app.is_running():

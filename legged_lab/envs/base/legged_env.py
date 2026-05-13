@@ -139,7 +139,19 @@ class LeggedEnv(VecEnv):
         self.time_out_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
 
         # self.joint_torque_limits = self.robot.data.joint_effort_limits[:, self.action_joint_ids].clone()
-        self.robot.write_joint_effort_limit_to_sim(self.robot.data.joint_effort_limits[:, self.action_joint_ids] * self.cfg.robot.effort_limit_scale, self.action_joint_ids)
+        # Apply effort_limit_scale on top of the current per-joint effort limits.
+        # `ArticulationData.joint_effort_limits` was added in Isaac Lab >= 2.2; on
+        # 2.1.0 we read the current limits straight from the PhysX view instead.
+        if hasattr(self.robot.data, "joint_effort_limits"):
+            current_effort_limits = self.robot.data.joint_effort_limits
+        else:
+            current_effort_limits = (
+                self.robot.root_physx_view.get_dof_max_forces().to(self.device).clone()
+            )
+        self.robot.write_joint_effort_limit_to_sim(
+            current_effort_limits[:, self.action_joint_ids] * self.cfg.robot.effort_limit_scale,
+            self.action_joint_ids,
+        )
         
         self.init_obs_buffer()
 

@@ -89,7 +89,17 @@ class AeroForceField:
         self.last_forces_w = F_w.detach()
         self.last_torques_w = T_w.detach()
 
-        # Expand to (num_envs, num_bodies=1, 3) and stage in GLOBAL frame
-        ball_asset.set_external_force_and_torque(
-            forces=F_w.unsqueeze(1), torques=T_w.unsqueeze(1), is_global=True
-        )
+        # Expand to (num_envs, num_bodies=1, 3) and stage in GLOBAL frame.
+        # `is_global` was added in Isaac Lab >= 2.2; on 2.1.0 the API only supports
+        # body-local forces. For a sphere ball whose body frame approximately tracks
+        # world (no commanded rotation, only spin), passing the world-frame vector
+        # as if it were local is a close approximation; revisit if you observe drag
+        # direction errors during long flights or heavy spin.
+        try:
+            ball_asset.set_external_force_and_torque(
+                forces=F_w.unsqueeze(1), torques=T_w.unsqueeze(1), is_global=True
+            )
+        except TypeError:
+            ball_asset.set_external_force_and_torque(
+                forces=F_w.unsqueeze(1), torques=T_w.unsqueeze(1)
+            )

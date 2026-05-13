@@ -14,7 +14,15 @@ import argparse
 from isaaclab.app import AppLauncher
 
 from rsl_rl.runners import OnPolicyRunner
-from rsl_rl.runners import OnPolicyPredictorRegressionRunner
+
+# Optional: only present in this repo's bundled rsl_rl/ (see top-level README's
+# "install the customized rsl_rl library" step). Stock or HOVER's rsl_rl doesn't
+# ship this runner; importing it lazily so train.py works without --predictor in
+# any rsl_rl install. Fails loudly later only if --predictor is explicitly passed.
+try:
+    from rsl_rl.runners import OnPolicyPredictorRegressionRunner
+except ImportError:
+    OnPolicyPredictorRegressionRunner = None  # type: ignore
 
 from legged_lab.utils import task_registry
 
@@ -86,6 +94,12 @@ def train():
         log_dir += f"_{agent_cfg.run_name}"
     log_dir = os.path.join(log_root_path, log_dir)
     if args_cli.predictor:
+        if OnPolicyPredictorRegressionRunner is None:
+            raise RuntimeError(
+                "--predictor was requested but `OnPolicyPredictorRegressionRunner` is not "
+                "available from `rsl_rl.runners`. Install this repo's bundled rsl_rl: "
+                "`pip install -e <TTRL-ICRA2026>/rsl_rl --no-deps` (see README)."
+            )
         runner = OnPolicyPredictorRegressionRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
     else:
         runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)

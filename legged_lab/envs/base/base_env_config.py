@@ -19,9 +19,19 @@ from isaaclab_rl.rsl_rl import (  # noqa:F401
     RslRlOnPolicyRunnerCfg,
     RslRlPpoActorCriticCfg,
     RslRlPpoAlgorithmCfg,
-    RslRlRndCfg,
-    RslRlSymmetryCfg,
 )
+# RslRlRndCfg / RslRlSymmetryCfg are only referenced in commented-out code below
+# (`rnd_cfg=None,  # RslRlRndCfg()`, `symmetry_cfg=None,  # RslRlSymmetryCfg()`)
+# and are missing from upstream Isaac Lab's `isaaclab_rl.rsl_rl` package. Importing
+# them optionally so the env config still works with stock installs.
+try:  # noqa:F401
+    from isaaclab_rl.rsl_rl import RslRlRndCfg  # type: ignore
+except ImportError:
+    RslRlRndCfg = None  # type: ignore
+try:  # noqa:F401
+    from isaaclab_rl.rsl_rl import RslRlSymmetryCfg  # type: ignore
+except ImportError:
+    RslRlSymmetryCfg = None  # type: ignore
 
 import legged_lab.mdp as mdp
 
@@ -178,7 +188,7 @@ class BaseAgentCfg(RslRlOnPolicyRunnerCfg):
     policy = RslRlPpoActorCriticCfg(
         class_name="ActorCritic",
         init_noise_std=1.0,
-        noise_std_type="scalar",
+        # noise_std_type="scalar",  # added in Isaac Lab >= 2.2; "scalar" is the default
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
         activation="elu",
@@ -197,9 +207,13 @@ class BaseAgentCfg(RslRlOnPolicyRunnerCfg):
         lam=0.95,
         desired_kl=0.01,
         max_grad_norm=1.0,
-        normalize_advantage_per_mini_batch=False,
-        symmetry_cfg=None,  # RslRlSymmetryCfg()
-        rnd_cfg=None,  # RslRlRndCfg()
+        # The following kwargs are only present in Isaac Lab >= 2.2's RslRlPpoAlgorithmCfg.
+        # They are commented out so the file works against stock Isaac Lab 2.1.0
+        # (whose isaaclab_rl/rsl_rl/rl_cfg.py only declares 13 fields). Behavior is
+        # unchanged because each value matches the implicit default in older versions.
+        # normalize_advantage_per_mini_batch=False,  # default in Isaac Lab 2.1.0
+        # symmetry_cfg=None,  # not in Isaac Lab 2.1.0; RslRlSymmetryCfg()
+        # rnd_cfg=None,  # not in Isaac Lab 2.1.0; RslRlRndCfg()
     )
     clip_actions = None
     save_interval = 100

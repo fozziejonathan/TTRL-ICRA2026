@@ -42,7 +42,7 @@ More clips with caption and hardware experiments can be found in our paper [vide
 
 - Environment: Table tennis simulation with configurable serving range and air drag implementation(legged_lab.physics.aerodynamics.py).
 - Algorithm: Baseline PPO from [RSL_RL](https://github.com/leggedrobotics/rsl_rl) and proposed prediction-augmented RL (rsl_rl.runners.on_policy_predictor_regression_runner.py)
-- Supported Robots 🤖 : **Booster T1** 
+- Supported Robots 🤖 : **Booster T1**, **Booster K1** (22-DoF, paddle attached via [`tools/add_t1_paddle_to_k1.py`](tools/add_t1_paddle_to_k1.py))
 
 
 ## Installation
@@ -110,6 +110,45 @@ Notes:
 - The predictor runner saves its weights inside the training checkpoint. When playing, pass `--predictor` to load these weights and run inference each step. If a checkpoint was trained without `--predictor`, it won’t contain predictor weights.
 - Predictor hyperparameters can be configured under the agent config (e.g., `T1TableTennisAgentCfg.predictor`).
 - During play, the predictor’s output is fed to the environment, and a separate orange sphere visualizes the predicted ball position.
+
+
+## Booster K1
+
+K1 support coexists with T1 and uses the same `TTEnv` runtime. K1 differs from T1 in its joint set: 22 articulated joints (2 head + 8 arm + 12 leg, **no `Waist`**), with `ALeft_Shoulder_Pitch` / `ARight_Shoulder_Pitch` URDF-style shoulder names. The TT policy controls 20 joints (heads excluded).
+
+- Train K1 TT:
+
+```bash
+python -m legged_lab.scripts.train \
+  --task=k1_tt \
+  --num_envs=4096 \
+  --headless \
+  --logger=tensorboard
+```
+
+- Evaluate K1 TT (`k1_tt_eval` extends episode length and sets the serving range, mirroring `t1_tt_eval`):
+
+```bash
+python -m legged_lab.scripts.eval \
+  --task=k1_tt_eval \
+  --num_envs=16 \
+  --load_run <run_id> \
+  --checkpoint <ckpt_file>
+```
+
+### Regenerating `K1_TT.usd`
+
+The K1 USD with paddle (`legged_lab/assets/booster/K1_TT/K1_TT.usd`) is produced from a vendored copy of `K1_22dof.usd` under [`legged_lab/assets/booster/K1_TT/source/K1_22dof/`](legged_lab/assets/booster/K1_TT/source/K1_22dof/) and the T1 paddle subtree. Re-run after modifying either source:
+
+```bash
+python tools/add_t1_paddle_to_k1.py
+```
+
+The generated USD sublayers the in-repo K1 source (`source/K1_22dof/K1_22dof.usd`) — no external `booster_assets/` directory is required at runtime.
+
+### K1 actuator gains
+
+`BOOSTER_K1_TT_CFG` in [`legged_lab/assets/booster/booster.py`](legged_lab/assets/booster/booster.py) uses per-joint `effort_limit` / `velocity_limit` parsed from [`K1_22dof.urdf`](legged_lab/assets/booster/K1_TT/source/K1_22dof/K1_22dof.urdf). Stiffness/damping are placeholders copied from T1 and marked with `# TODO tune for K1`; expect to revisit them after the first training run.
 
 
 

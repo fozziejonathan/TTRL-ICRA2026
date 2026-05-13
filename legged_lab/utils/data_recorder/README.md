@@ -43,6 +43,8 @@ When you run `play.py`, this will save PNG frames to a timestamped sub-directory
 python legged_lab/scripts/preview.py --num_envs 1024 --logger tensorboard --task t1_tt --headless --enable_cameras
 ```
 
+> Replace `--task t1_tt` with `--task k1_tt` (or `--task k1_tt_eval`) to record the Booster K1 instead.
+
 ### Convert Frames to Video
 
 Use the `frames2video.sh` script to combine the saved image frames into a video.
