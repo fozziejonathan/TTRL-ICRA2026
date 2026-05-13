@@ -431,9 +431,16 @@ class TTEnv(VecEnv):
                 )
                 return fallback
 
-            robot_prim_path = self.robot.cfg.prim_path.replace(
+            # `self.robot.cfg.prim_path` may still contain the unexpanded
+            # template `{ENV_REGEX_NS}` (older Isaac Lab) OR the regex-expanded
+            # form `/World/envs/env_.*/Robot` (newer Isaac Lab). Both must be
+            # resolved to a real prim path under env_0.
+            raw_prim_path = self.robot.cfg.prim_path
+            robot_prim_path = raw_prim_path.replace(
                 "{ENV_REGEX_NS}", "/World/envs/env_0"
             )
+            if "env_.*" in robot_prim_path:
+                robot_prim_path = robot_prim_path.replace("env_.*", "env_0")
             body_name = self.cfg.robot.paddle_body_name
             marker_subpath = self.cfg.robot.paddle_marker_subpath
             hand_path = f"{robot_prim_path}/{body_name}"
@@ -442,9 +449,26 @@ class TTEnv(VecEnv):
             hand_prim = stage.GetPrimAtPath(hand_path)
             marker_prim = stage.GetPrimAtPath(marker_path)
             if not hand_prim or not hand_prim.IsValid():
+                # Last-resort: walk env_0 and look for `body_name` anywhere under
+                # the robot. Handles asset layouts that wrap the link in extra
+                # Xforms or use a different root prim name.
+                env0_root = stage.GetPrimAtPath("/World/envs/env_0")
+                if env0_root and env0_root.IsValid():
+                    for prim in stage.Traverse():
+                        path_str = str(prim.GetPath())
+                        if not path_str.startswith("/World/envs/env_0/"):
+                            continue
+                        if prim.GetName() == body_name:
+                            hand_prim = prim
+                            hand_path = path_str
+                            marker_path = f"{hand_path}/{marker_subpath}"
+                            marker_prim = stage.GetPrimAtPath(marker_path)
+                            break
+            if not hand_prim or not hand_prim.IsValid():
                 print(
-                    f"[TTEnv] paddle offset: body prim '{hand_path}' not found; "
-                    f"using cfg fallback {tuple(self.cfg.robot.paddle_local_offset)}"
+                    f"[TTEnv] paddle offset: body prim '{hand_path}' not found "
+                    f"(raw prim_path='{raw_prim_path}'); using cfg fallback "
+                    f"{tuple(self.cfg.robot.paddle_local_offset)}"
                 )
                 return fallback
             if not marker_prim or not marker_prim.IsValid():
