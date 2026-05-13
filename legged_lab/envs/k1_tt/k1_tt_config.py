@@ -244,6 +244,13 @@ class K1TableTennisEnvCfg(TTEnvCfg):
         self.robot.feet_body_names = [".*_foot_link"]
         self.robot.num_actions = len(_K1_TT_POLICY_JOINTS)
         self.robot.num_joints = len(_K1_TT_POLICY_JOINTS)
+        # K1 receives the T1 paddle subtree via tools/add_t1_paddle_to_k1.py, which
+        # parents the marker/visuals/collisions under a `paddle_adapter` Xform so
+        # K1's own articulation is untouched. The runtime resolves the actual
+        # paddle hit point from this prim's USD transform at startup; the
+        # numeric fallback below is only used if that lookup fails.
+        self.robot.paddle_marker_subpath = "paddle_adapter/marker_ball"
+        self.robot.paddle_local_offset = (0.0, -0.345, 0.0)
         self.domain_rand.events.add_base_mass.params["asset_cfg"].body_names = ["Trunk"]
         # K1 has no Waist joint, so override the locomotion-joint reset event regex list.
         self.domain_rand.events.reset_locomotion_joints.params["asset_cfg"] = SceneEntityCfg(

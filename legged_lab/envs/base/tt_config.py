@@ -65,6 +65,18 @@ class RobotCfg:
     num_actions: int = 21
     num_joints: int = 21
     effort_limit_scale: float = 1.0
+    # --- Paddle attachment ---
+    # Body that the paddle is rigidly attached to (used by `compute_paddle_touch`).
+    paddle_body_name: str = "right_hand_link"
+    # Subpath, relative to `<env_0>/Robot/<paddle_body_name>`, of the USD Xform that
+    # marks the paddle contact center. The runtime reads this prim's translation
+    # relative to the body frame at startup and uses it as the local hit offset.
+    # T1 has the marker directly under `right_hand_link`; K1 inherits the paddle
+    # via a `paddle_adapter` Xform so its subpath differs.
+    paddle_marker_subpath: str = "marker_ball"
+    # Fallback offset (in body-local meters) used only when the USD lookup above
+    # fails (e.g. wrong prim path on a custom asset). Historically tuned for T1.
+    paddle_local_offset: tuple = (0.0, -0.345, 0.0)
 
 @configclass
 class BallCfg:

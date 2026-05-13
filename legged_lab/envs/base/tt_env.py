@@ -84,6 +84,29 @@ class TTSceneCfg(SceneCfg):
                 ),
             ),
         )
+        # Diagnostic marker for the phantom paddle touch point that drives the
+        # contact reward / hit/success metrics. If this sphere does not overlay
+        # the visible paddle face, `compute_paddle_touch`'s local offset is wrong
+        # for the current robot and the policy is being rewarded for hitting a
+        # location that the physical paddle never actually reaches.
+        self.paddle_touch: RigidObjectCfg = RigidObjectCfg(
+            prim_path="{ENV_REGEX_NS}/PaddleTouch",
+            spawn=sim_utils.SphereCfg(
+                radius=0.015,
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                    kinematic_enabled=True,
+                    disable_gravity=True,
+                ),
+                collision_props=sim_utils.CollisionPropertiesCfg(
+                    collision_enabled=False,
+                ),
+                visual_material=sim_utils.PreviewSurfaceCfg(
+                    diffuse_color=(1.0, 0.0, 1.0),  # magenta - stands out vs paddle red/black
+                    metallic=0.0,
+                    roughness=0.5,
+                ),
+            ),
+        )
         # self.robot_future: RigidObjectCfg = RigidObjectCfg(
         #     prim_path="{ENV_REGEX_NS}/RobotFuturePos",
         #     spawn=sim_utils.SphereCfg(
@@ -181,6 +204,7 @@ class TTEnv(VecEnv):
         self.ball: RigidObject = self.scene["ball"]
         self.ball_future_visual: RigidObject = self.scene["ball_future"]
         self.ball_pred_visual: RigidObject = self.scene["ball_pred"]
+        self.paddle_touch_visual: RigidObject = self.scene["paddle_touch"]
         # self.robot_future_vel_visual: RigidObject = self.scene["robot_future_vel"]
         # self.robot_future_pos_visual: RigidObject = self.scene["robot_future"]
 
@@ -359,6 +383,10 @@ class TTEnv(VecEnv):
         )
 
         self.init_obs_buffer()
+        # Resolve the paddle-contact local offset from USD once, so the phantom
+        # `paddle_touch_point` aligns with the actual paddle marker for whichever
+        # robot is loaded (T1 vs K1 with grafted paddle_adapter, etc.).
+        self._paddle_local_offset = self._resolve_paddle_offset_from_usd()
         # --- Quadratic-drag model constant for ball dynamics (scalar k) ---
         # k = 0.5 * rho * Cd * A / m
         try:
@@ -370,6 +398,82 @@ class TTEnv(VecEnv):
             self.ball_drag_k = float(0.5 * rho * cd * area / max(1e-6, mass))
         except Exception:
             self.ball_drag_k = 0.13
+
+    def _resolve_paddle_offset_from_usd(self) -> torch.Tensor:
+        """Read the paddle marker prim's translation in `paddle_body_name`'s local frame.
+
+        Returns a 1-D tensor of shape (3,) in `self.device`. Falls back to
+        `cfg.robot.paddle_local_offset` if anything goes wrong (no stage, prim
+        missing, pxr unavailable). The result is then broadcast inside
+        `compute_paddle_touch` to drive contact rewards / hit metrics.
+        """
+        fallback = torch.tensor(
+            list(self.cfg.robot.paddle_local_offset),
+            device=self.device,
+            dtype=torch.float32,
+        )
+        try:
+            import omni.usd  # type: ignore
+            from pxr import UsdGeom  # type: ignore
+        except Exception as exc:  # noqa: BLE001 - log and fall back
+            print(
+                f"[TTEnv] paddle offset: pxr/omni.usd unavailable ({exc}); using "
+                f"cfg fallback {tuple(self.cfg.robot.paddle_local_offset)}"
+            )
+            return fallback
+
+        try:
+            stage = omni.usd.get_context().get_stage()
+            if stage is None:
+                print(
+                    "[TTEnv] paddle offset: no USD stage available; using cfg "
+                    f"fallback {tuple(self.cfg.robot.paddle_local_offset)}"
+                )
+                return fallback
+
+            robot_prim_path = self.robot.cfg.prim_path.replace(
+                "{ENV_REGEX_NS}", "/World/envs/env_0"
+            )
+            body_name = self.cfg.robot.paddle_body_name
+            marker_subpath = self.cfg.robot.paddle_marker_subpath
+            hand_path = f"{robot_prim_path}/{body_name}"
+            marker_path = f"{hand_path}/{marker_subpath}"
+
+            hand_prim = stage.GetPrimAtPath(hand_path)
+            marker_prim = stage.GetPrimAtPath(marker_path)
+            if not hand_prim or not hand_prim.IsValid():
+                print(
+                    f"[TTEnv] paddle offset: body prim '{hand_path}' not found; "
+                    f"using cfg fallback {tuple(self.cfg.robot.paddle_local_offset)}"
+                )
+                return fallback
+            if not marker_prim or not marker_prim.IsValid():
+                print(
+                    f"[TTEnv] paddle offset: marker prim '{marker_path}' not "
+                    f"found; using cfg fallback {tuple(self.cfg.robot.paddle_local_offset)}"
+                )
+                return fallback
+
+            hand_xf = UsdGeom.Xformable(hand_prim).ComputeLocalToWorldTransform(0.0)
+            marker_xf = UsdGeom.Xformable(marker_prim).ComputeLocalToWorldTransform(0.0)
+            marker_w = marker_xf.ExtractTranslation()
+            # hand_xf maps body-local -> world; invert to bring marker's world
+            # position back into body-local coordinates.
+            local_vec = hand_xf.GetInverse().Transform(marker_w)
+            offset_tuple = (float(local_vec[0]), float(local_vec[1]), float(local_vec[2]))
+            offset = torch.tensor(list(offset_tuple), device=self.device, dtype=torch.float32)
+            print(
+                f"[TTEnv] paddle local offset from USD ({marker_path}): "
+                f"({offset_tuple[0]:.4f}, {offset_tuple[1]:.4f}, {offset_tuple[2]:.4f}) "
+                f"[cfg fallback was {tuple(self.cfg.robot.paddle_local_offset)}]"
+            )
+            return offset
+        except Exception as exc:  # noqa: BLE001 - never crash the sim over a viz aid
+            print(
+                f"[TTEnv] paddle offset: USD lookup raised {exc!r}; using cfg "
+                f"fallback {tuple(self.cfg.robot.paddle_local_offset)}"
+            )
+            return fallback
 
     def update_ball_future_visual(self):
         if self.headless:
@@ -388,6 +492,20 @@ class TTEnv(VecEnv):
         pose[:, 3] = 1.0
         env_ids = torch.arange(self.num_envs, device=self.device)
         self.ball_pred_visual.write_root_pose_to_sim(pose, env_ids)
+        self.scene.write_data_to_sim()
+    def update_paddle_touch_visual(self):
+        """Place the diagnostic marker on the current `paddle_touch_point`.
+
+        `paddle_touch_point` is already in world frame (see `compute_paddle_touch`),
+        so no env-origin offset is needed.
+        """
+        if self.headless:
+            return
+        pose = torch.zeros((self.num_envs, 7), device=self.device)
+        pose[:, :3] = self.paddle_touch_point
+        pose[:, 3] = 1.0
+        env_ids = torch.arange(self.num_envs, device=self.device)
+        self.paddle_touch_visual.write_root_pose_to_sim(pose, env_ids)
         self.scene.write_data_to_sim()
     def update_robot_future_pos_visual(self):
         if self.headless:
@@ -855,37 +973,39 @@ class TTEnv(VecEnv):
         self.ball_global_pos = self.ball.data.root_pos_w 
 
         # --- Compute Paddle Position and Contact ---
-        # The paddle is rigidly attached as a child Xform of `right_hand_link`, so we use
-        # that link's body pose. We cache the body index once because the robot's body
-        # order can differ between T1 (where this happened to be index 15) and K1.
+        # The paddle is rigidly attached as a child Xform of the body named in
+        # cfg.robot.paddle_body_name (T1: "right_hand_link" with marker as a
+        # direct child; K1: same body name but the paddle lives under a
+        # `paddle_adapter` Xform). We cache the body index because the body
+        # order can differ across articulations.
         if not hasattr(self, "_paddle_body_index"):
-            ids, _ = self.robot.find_bodies("right_hand_link")
+            body_name = self.cfg.robot.paddle_body_name
+            ids, _ = self.robot.find_bodies(body_name)
             if not ids:
                 raise RuntimeError(
-                    "compute_paddle_touch: 'right_hand_link' not found on the articulation"
+                    f"compute_paddle_touch: '{body_name}' not found on the articulation"
                 )
             self._paddle_body_index = ids[0]
         paddle_index = self._paddle_body_index
         paddle_pos = self.robot.data.body_pos_w[:, paddle_index, :]
-        # print("paddle_pos: ", paddle_pos[0, :])
-        # print("ball_pos: ", self.ball_global_pos[0,:])
 
         paddle_quat = self.robot.data.body_quat_w[:, paddle_index, :]
         # 1) Normalize the quaternion (just in case):
         paddle_quat = paddle_quat / paddle_quat.norm(dim=1, keepdim=True)
-        # 2) Build the local offset (0, -0.345, 0) and expand to (N,3):
+        # 2) Use the body-local offset resolved from USD at init (or the cfg
+        #    fallback), broadcast to (N, 3) and matched to paddle_pos dtype.
         local_offset = (
-            torch.tensor(
-                [0.0, -0.345, 0.0], # Good to double check.
-                device=paddle_pos.device,
-                dtype=paddle_pos.dtype,
-            )
+            self._paddle_local_offset.to(device=paddle_pos.device, dtype=paddle_pos.dtype)
             .unsqueeze(0)
             .expand_as(paddle_pos)
         )
         rotated_offset: torch.Tensor = math_utils.quat_apply(paddle_quat, local_offset)
         # 4) Compute your touch point:
         self.paddle_touch_point = paddle_pos + rotated_offset # paddle_position in the world frame.
+        # Drive the diagnostic marker so the user can visually confirm whether
+        # the phantom point overlays the real paddle face.
+        if not self.headless:
+            self.update_paddle_touch_visual()
         # 5) Compute touch reward:
 
         distance = torch.norm(self.ball_global_pos - self.paddle_touch_point, dim=1) - 0.02 # corrected for ball radius
