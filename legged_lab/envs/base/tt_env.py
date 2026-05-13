@@ -1073,10 +1073,11 @@ class TTEnv(VecEnv):
         rotated_offset: torch.Tensor = math_utils.quat_apply(paddle_quat, local_offset)
         # 4) Compute your touch point:
         self.paddle_touch_point = paddle_pos + rotated_offset # paddle_position in the world frame.
-        # Drive the diagnostic marker so the user can visually confirm whether
-        # the phantom point overlays the real paddle face.
-        if not self.headless:
-            self.update_paddle_touch_visual()
+        # NOTE: Do NOT call `update_paddle_touch_visual()` here. This function
+        # is invoked from the inner physics substep loop in step(), and the
+        # underlying `scene.write_data_to_sim()` racing with PhysX on GUI mode
+        # corrupts the ball state (ball gets stuck mid-flight). The marker is
+        # written once per env step from `compute_intermediate_values` instead.
         # 5) Compute touch reward:
 
         distance = torch.norm(self.ball_global_pos - self.paddle_touch_point, dim=1) - 0.02 # corrected for ball radius
@@ -1334,7 +1335,9 @@ class TTEnv(VecEnv):
             # self.update_ball_future_visual()
             # self.update_robot_future_pos_visual()
             # self.update_robot_future_vel_visual()
-            pass
+            # Move the diagnostic paddle marker once per env step (safe relative
+            # to the physics substep loop in step()).
+            self.update_paddle_touch_visual()
     def init_obs_buffer(self):
         if self.add_noise:
             actor_obs, _ = self.compute_current_observations()
