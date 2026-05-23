@@ -1,5 +1,17 @@
 # K1 Table Tennis Tuning Log
 
+## Reconnecting after disconnect
+
+If your SSH session drops (e.g. laptop sleeps), training keeps running on the pod. To reconnect:
+
+```bash
+tmux attach -t k1_train                                      # see live training output
+python3 /workspace/TTRL-ICRA2026/tools/check_training.py    # quick health check
+tensorboard --logdir logs --port 6006 --host 0.0.0.0         # start TensorBoard (expose port 6006 in RunPod dashboard)
+```
+
+---
+
 Baseline: 98% hit rate, 28% success rate (policy contacts ball almost every time but rarely returns it over the net).
 
 ---
