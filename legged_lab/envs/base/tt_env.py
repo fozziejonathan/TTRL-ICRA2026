@@ -1104,11 +1104,12 @@ class TTEnv(VecEnv):
             self.cfg.ball.contact_threshold - distance
         ) / self.cfg.ball.contact_threshold
         self.ball_contact = torch.clamp(contact_score, min=0.0, max=1.0) # determine if in contact region
+        # Detect first-contact step BEFORE updating the running max: ball_contact_rew==0
+        # means no contact has been registered yet this serve.  Checking after the
+        # maximum() update made ball_contact == ball_contact_rew always true, so
+        # new_hits was permanently False and has_touch_paddle was never set.
+        new_hits = (contact_score > 0) & (self.ball_contact_rew == 0)  # Tensor[N] bool
         self.ball_contact_rew = torch.maximum(self.ball_contact_rew, self.ball_contact) # finds reward for closest ball paddle distance
-        # self.ball_contact = torch.where(contact_score > 0.0, torch.ones_like(contact_score), torch.zeros_like(contact_score))
-        # self.ball_contact = self.ball_contact * ~self.has_touch_paddle # mask invalid if previous ball_contact True
-        # new_hits = contact_score > 0  # Tensor[N] bool
-        new_hits = (contact_score > 0) & (self.ball_contact < self.ball_contact_rew)  # Tensor[N] bool
         still_false = ~self.has_touch_paddle  # Tensor[N] bool
         self.has_touch_paddle[still_false] = new_hits[still_false] # set has_touch_paddle True for env with ball_contact True
 

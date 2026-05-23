@@ -43,3 +43,33 @@ Trained K1 policy achieves 98% hit rate but only 28% success rate. Investigation
 - Check TensorBoard for `reward_contact` vs `reward_table_success` episode totals to verify the policy is actually pursuing returns
 
 ---
+
+## 2026-05-23 — Pre-training code-review fixes
+
+### Bug 1 — `has_touch_paddle` never set (critical, pre-existing)
+
+**File**: `legged_lab/envs/base/tt_env.py` ~line 1107
+
+`ball_contact_rew` was updated to `max(ball_contact_rew, ball_contact)` **before** `new_hits` checked `ball_contact < ball_contact_rew`. After the update those two values are equal, so `new_hits` was always `False` and `has_touch_paddle` was never `True`. Every reward gated on `has_touch_paddle` was permanently dead:
+
+- `reward_contact` (zeroed at line 1123 via `has_touch_paddle`)
+- `reward_table_success` (multiplies by `has_touch_paddle.float()`)
+- `reward_future_landing_dis` (mask = `ball_landing_dis_rew`, derived from `has_touch_paddle`)
+- `reward_future_pass_net` (same mask)
+
+The 98%/28% baseline was trained with all four of these signals dead. The 28% success came entirely from position-guidance rewards (`reward_future_ee_target`, `reward_future_body_target`, `reward_future_vel_target`).
+
+**Fix**: compute `new_hits = (contact_score > 0) & (ball_contact_rew == 0)` — "first step where contact_score > 0 and no prior contact this serve" — **before** updating `ball_contact_rew`.
+
+### Note — `reward_future_pass_net` formula is Laplacian, not Gaussian; monitor early
+
+`reward_future_pass_net` uses `exp(-height_err / std_h)`, so gradient width scales linearly with `std_h`. At `std_h=0.15`, a 0.5m error → 3.6% of max; at 0.40, same error → 29%. This is the first run where this reward will actually fire (has_touch_paddle was broken before), so there's no prior data on typical height errors at contact time.
+
+**Check at iter ~1000–1500:**
+- Read `reward_future_pass_net` and `reward_future_landing_dis` episode totals from TensorBoard events.
+- Both fire on the same timestep (same `ball_landing_dis_rew` mask), so normalise by weight: compute `(pass_net_total / 150) / (landing_dis_total / 120)`. If this ratio is below ~0.20, std_h is too tight and should be widened to 0.25–0.30.
+- If success rate climbs to ~50–60% then stalls while hit rate stays high, suspect high-arcing shots — same fix.
+
+**Action if std_h too tight:** change `std_h=0.15` → `0.25` in `k1_tt_config.py`, resume from latest checkpoint.
+
+---
