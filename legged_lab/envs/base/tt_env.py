@@ -823,39 +823,8 @@ class TTEnv(VecEnv):
         if len(env_ids) == 0:
             return
 
-        # --- Diagnostic: log closest-pass distance for serves that ended ---
-        try:
-            finite_mask = torch.isfinite(self.min_paddle_ball_distance[env_ids])
-            if finite_mask.any():
-                vals = self.min_paddle_ball_distance[env_ids][finite_mask].detach().to("cpu")
-                self._dbg_closest_sum += float(vals.sum().item())
-                self._dbg_closest_count += int(vals.numel())
-                avg_so_far = (
-                    self._dbg_closest_sum / max(1, self._dbg_closest_count)
-                )
-                hit_thresh = float(self.cfg.ball.contact_threshold)
-                print(
-                    f"[ClosestPass] this batch: min={float(vals.min().item()):.4f}m "
-                    f"max={float(vals.max().item()):.4f}m mean={float(vals.mean().item()):.4f}m "
-                    f"(n={int(vals.numel())}); running mean over all serves: "
-                    f"{avg_so_far:.4f}m; hit threshold: {hit_thresh:.4f}m"
-                )
-                # If env 0 just had a serve end, dump its miss vector so we can
-                # tell which axis the robot is short on (world coords).
-                env_ids_cpu = env_ids.detach().to("cpu")
-                if int((env_ids_cpu == 0).any().item()) and hasattr(self, "_dbg_closest_ball_w"):
-                    bp = self._dbg_closest_ball_w[0].detach().to("cpu").tolist()
-                    pp = self._dbg_closest_paddle_w[0].detach().to("cpu").tolist()
-                    rp = self._dbg_closest_robot_w[0].detach().to("cpu").tolist()
-                    dv = [bp[i] - pp[i] for i in range(3)]
-                    print(
-                        f"[ClosestPass:env0] ball_w=({bp[0]:.3f},{bp[1]:.3f},{bp[2]:.3f}) "
-                        f"paddle_w=({pp[0]:.3f},{pp[1]:.3f},{pp[2]:.3f}) "
-                        f"robot_w=({rp[0]:.3f},{rp[1]:.3f},{rp[2]:.3f}) "
-                        f"ball-paddle=({dv[0]:+.3f},{dv[1]:+.3f},{dv[2]:+.3f})"
-                    )
-        except Exception:
-            pass
+        # ClosestPass diagnostic prints disabled during training (GPU→CPU copies
+        # every reset batch were forcing sync points and halving throughput).
 
         # Reset the closest-pass tracker for these envs (start of next serve).
         self.min_paddle_ball_distance[env_ids] = float("inf")
