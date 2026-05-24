@@ -357,20 +357,16 @@ BOOSTER_K1_TT_CFG = ArticulationCfg(
                 ".*_Hip_Yaw": 18.1,
                 ".*_Knee_Pitch": 12.5,
             },
-            # K1 leg effort limits are ~67% of T1 (30-40 Nm vs 45-60 Nm).
-            # Halving stiffness from T1's 200 keeps PD saturation onset at a
-            # similar joint-error angle and reduces ankle tracking error, which
-            # the PACE paper identifies as a primary source of end-effector error.
-            stiffness=100.0,
-            damping=3.0,
+            stiffness=200.0,
+            damping=5.0,
             armature=0.01,
         ),
         "feet": ImplicitActuatorCfg(
             joint_names_expr=[".*_Ankle_Pitch", ".*_Ankle_Roll"],
             effort_limit={".*_Ankle_Pitch": 20.0, ".*_Ankle_Roll": 20.0},
             velocity_limit={".*_Ankle_Pitch": 18.1, ".*_Ankle_Roll": 18.1},
-            stiffness=30.0,
-            damping=2.0,
+            stiffness=50.0,
+            damping=1.0,
             armature=0.01,
         ),
         # K1 shoulder pitch joints are named ALeft_Shoulder_Pitch / ARight_Shoulder_Pitch.
@@ -385,12 +381,8 @@ BOOSTER_K1_TT_CFG = ArticulationCfg(
             ],
             effort_limit=14.0,
             velocity_limit=18.0,
-            # With 14 Nm limit, stiffness=40 saturated at only 0.35 rad error,
-            # giving no torque headroom during a swing. Reducing to 25 gives
-            # ~0.56 rad before saturation. Damping cut from 10 to 3 so fast
-            # swing motions are not actively braked by the PD controller.
-            stiffness=25.0,
-            damping=3.0,
+            stiffness=40.0,
+            damping=10.0,
             armature=0.01,
         ),
         # Head joints are not policy-controlled but we hold them at default with a stiff PD

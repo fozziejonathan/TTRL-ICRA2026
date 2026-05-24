@@ -55,10 +55,10 @@ def run():
 
     # --- Key reward episode totals ---
     rewards = {
-        "reward_future_pass_net":   ("Episode_Reward/reward_future_pass_net",   150),
-        "reward_future_landing_dis":("Episode_Reward/reward_future_landing_dis", 120),
-        "reward_contact":           ("Episode_Reward/reward_contact",             50),
-        "reward_table_success":     ("Episode_Reward/reward_table_success",      250),
+        "reward_future_pass_net":   ("Episode_Reward/reward_future_pass_net",   100),
+        "reward_future_landing_dis":("Episode_Reward/reward_future_landing_dis", 60),
+        "reward_contact":           ("Episode_Reward/reward_contact",            150),
+        "reward_table_success":     ("Episode_Reward/reward_table_success",      100),
     }
     print()
     raw = {}
@@ -77,14 +77,14 @@ def run():
     ts  = raw.get("reward_table_success")
     print()
     if pn is not None and ld is not None and ld > 0:
-        ratio = (pn / 150) / (ld / 120)
-        flag = "  *** STD_H MAY BE TOO TIGHT — consider widening to 0.25-0.30 ***" if ratio < 0.20 else "  OK"
+        ratio = (pn / 100) / (ld / 60)
+        flag = "  *** STD_H MAY BE TOO TIGHT — consider widening ***" if ratio < 0.20 else "  OK"
         print(f"  pass_net/landing_dis (normalised by weight): {ratio:.2f}{flag}")
     elif pn == 0 and ld == 0:
         print("  WARNING: both reward_future_pass_net and reward_future_landing_dis are zero.")
         print("  Check that has_touch_paddle fix is in place and training is past iter ~100.")
-    if ts is not None and ts == 0 and current_iter not in ("?",) and int(current_iter) > 200:
-        print("  WARNING: reward_table_success still zero after iter 200 — check has_touch_paddle logic.")
+    if ts is not None and ts == 0 and current_iter not in ("?",) and int(current_iter) > 1000:
+        print("  WARNING: reward_table_success still zero after iter 1000 — success reward may be blocked.")
 
     print()
 

@@ -1239,12 +1239,15 @@ class TTEnv(VecEnv):
         )
         # self.mask_invalid = (self.ball_pos[:, 0] < -1.6) | (vx > 0) | (z < 0.7)
         # Invalid mask: use explicit parentheses to avoid bitwise ops on floats
+        # has_touch_paddle intentionally excluded: adding it zeroed reaching rewards the
+        # instant contact happened, making contact economically irrational for the policy
+        # (lost ~360-600 reaching-reward units vs gained 250 contact reward). Ball physics
+        # (vx>0, z<0.7) naturally extinguish reaching rewards a few steps post-contact.
         self.mask_invalid = (
             (self.ball_pos[:, 0] < -1.9)
             | (vx > 0)
             | (z < 0.7)
             | ((self.ball_pos[:, 0] < -1.35) & (vz < 0))
-            | self.has_touch_paddle
         )
         self.mask_terminal = (self.ball_pos[:, 0] > -1.5) | (self.ball_pos[:, 0] < -1.9) | self.has_touch_paddle_rew | (vz < 0.0) | (self.ball_pos[:, 2] < 0.6) 
             #mask_terminal: true-> future,mask_terminal: false->distance

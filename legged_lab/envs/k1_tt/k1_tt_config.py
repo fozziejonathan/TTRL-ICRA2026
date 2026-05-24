@@ -156,12 +156,9 @@ class K1TableTennisRewardCfg(RewardCfg):
 
     # K1 has no Waist joint; the T1 joint_deviation_torso term is intentionally omitted.
 
-    # Contact (reaching) reward: shaping signal only — keep weight well below
-    # the returning rewards so the policy doesn't stop at "touch and block".
-    # PACE paper frames reaching as shaping; returning is the primary objective.
     reward_contact = RewTerm(
         func=mdp.reward_contact,
-        weight=50.0,
+        weight=150.0,
     )
 
     reward_future_dis_ee = RewTerm(
@@ -182,27 +179,21 @@ class K1TableTennisRewardCfg(RewardCfg):
         params={"vel_std": 1.2, "threshold": 0.1},
     )
 
-    # Landing and net rewards: these are the primary returning-quality signals.
-    # Raised weights so that a successful return dominates the reward landscape.
     reward_future_landing_dis = RewTerm(
         func=mdp.reward_future_landing_dis,
-        weight=120.0,
+        weight=60.0,
         params={"threshold": 3.0},
     )
 
     reward_future_pass_net = RewTerm(
         func=mdp.reward_future_pass_net,
-        # Tighter std (0.15 vs 0.4) sharpens the gradient near the net; target
-        # lowered to 0.20m above table (~5cm above net top) to avoid over-arcing.
-        params={"std_h": 0.15, "z_target": 0.76 + 0.20},
-        weight=150.0,
+        params={"std_h": 0.4, "z_target": 0.76 + 0.35},
+        weight=100.0,
     )
 
-    # Primary success signal: ball lands on opponent table after a paddle hit.
-    # Must be the highest-weight sparse reward to pull the policy past "blocking".
     reward_table_success = RewTerm(
         func=mdp.reward_table_success,
-        weight=250.0,
+        weight=100.0,
     )
 
 

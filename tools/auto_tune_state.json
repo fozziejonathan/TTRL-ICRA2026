@@ -1,0 +1,9 @@
+{
+  "contact_weight": 150.0,
+  "success_weight": 100.0,
+  "std_h": 0.4,
+  "last_intervention_iter": 0,
+  "last_intervention_run": "",
+  "interventions": [],
+  "done": false
+}
