@@ -823,8 +823,37 @@ class TTEnv(VecEnv):
         if len(env_ids) == 0:
             return
 
-        # ClosestPass diagnostic prints disabled during training (GPU→CPU copies
-        # every reset batch were forcing sync points and halving throughput).
+        # --- Diagnostic: log closest-pass distance for serves that ended ---
+        try:
+            finite_mask = torch.isfinite(self.min_paddle_ball_distance[env_ids])
+            if finite_mask.any():
+                vals = self.min_paddle_ball_distance[env_ids][finite_mask].detach().to("cpu")
+                self._dbg_closest_sum += float(vals.sum().item())
+                self._dbg_closest_count += int(vals.numel())
+                avg_so_far = (
+                    self._dbg_closest_sum / max(1, self._dbg_closest_count)
+                )
+                hit_thresh = float(self.cfg.ball.contact_threshold)
+                print(
+                    f"[ClosestPass] this batch: min={float(vals.min().item()):.4f}m "
+                    f"max={float(vals.max().item()):.4f}m mean={float(vals.mean().item()):.4f}m "
+                    f"(n={int(vals.numel())}); running mean over all serves: "
+                    f"{avg_so_far:.4f}m; hit threshold: {hit_thresh:.4f}m"
+                )
+                env_ids_cpu = env_ids.detach().to("cpu")
+                if int((env_ids_cpu == 0).any().item()) and hasattr(self, "_dbg_closest_ball_w"):
+                    bp = self._dbg_closest_ball_w[0].detach().to("cpu").tolist()
+                    pp = self._dbg_closest_paddle_w[0].detach().to("cpu").tolist()
+                    rp = self._dbg_closest_robot_w[0].detach().to("cpu").tolist()
+                    dv = [bp[i] - pp[i] for i in range(3)]
+                    print(
+                        f"[ClosestPass:env0] ball_w=({bp[0]:.3f},{bp[1]:.3f},{bp[2]:.3f}) "
+                        f"paddle_w=({pp[0]:.3f},{pp[1]:.3f},{pp[2]:.3f}) "
+                        f"robot_w=({rp[0]:.3f},{rp[1]:.3f},{rp[2]:.3f}) "
+                        f"ball-paddle=({dv[0]:+.3f},{dv[1]:+.3f},{dv[2]:+.3f})"
+                    )
+        except Exception:
+            pass
 
         # Reset the closest-pass tracker for these envs (start of next serve).
         self.min_paddle_ball_distance[env_ids] = float("inf")
@@ -1073,12 +1102,8 @@ class TTEnv(VecEnv):
             self.cfg.ball.contact_threshold - distance
         ) / self.cfg.ball.contact_threshold
         self.ball_contact = torch.clamp(contact_score, min=0.0, max=1.0) # determine if in contact region
-        # Detect first-contact step BEFORE updating the running max: ball_contact_rew==0
-        # means no contact has been registered yet this serve.  Checking after the
-        # maximum() update made ball_contact == ball_contact_rew always true, so
-        # new_hits was permanently False and has_touch_paddle was never set.
-        new_hits = (contact_score > 0) & (self.ball_contact_rew == 0)  # Tensor[N] bool
         self.ball_contact_rew = torch.maximum(self.ball_contact_rew, self.ball_contact) # finds reward for closest ball paddle distance
+        new_hits = (contact_score > 0) & (self.ball_contact < self.ball_contact_rew)  # Tensor[N] bool
         still_false = ~self.has_touch_paddle  # Tensor[N] bool
         self.has_touch_paddle[still_false] = new_hits[still_false] # set has_touch_paddle True for env with ball_contact True
 
@@ -1239,15 +1264,12 @@ class TTEnv(VecEnv):
         )
         # self.mask_invalid = (self.ball_pos[:, 0] < -1.6) | (vx > 0) | (z < 0.7)
         # Invalid mask: use explicit parentheses to avoid bitwise ops on floats
-        # has_touch_paddle intentionally excluded: adding it zeroed reaching rewards the
-        # instant contact happened, making contact economically irrational for the policy
-        # (lost ~360-600 reaching-reward units vs gained 250 contact reward). Ball physics
-        # (vx>0, z<0.7) naturally extinguish reaching rewards a few steps post-contact.
         self.mask_invalid = (
             (self.ball_pos[:, 0] < -1.9)
             | (vx > 0)
             | (z < 0.7)
             | ((self.ball_pos[:, 0] < -1.35) & (vz < 0))
+            | self.has_touch_paddle
         )
         self.mask_terminal = (self.ball_pos[:, 0] > -1.5) | (self.ball_pos[:, 0] < -1.9) | self.has_touch_paddle_rew | (vz < 0.0) | (self.ball_pos[:, 2] < 0.6) 
             #mask_terminal: true-> future,mask_terminal: false->distance

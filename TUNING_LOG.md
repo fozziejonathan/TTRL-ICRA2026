@@ -296,3 +296,53 @@ The reward_contact:reward_table_success ratio was 50:250 = 0.2:1, meaning the sp
 
 Training started fresh (--clean) from iter 0 in `tmux k1_train:0`. Old checkpoints from iter 4250 (trained with wrong rewards) were discarded.
 
+---
+
+## 2026-05-24 (evening) — Infrastructure fixes; training running overnight
+
+### Reconnecting after disconnect
+
+```bash
+tmux attach -t k1_train
+# Window 0 (bash):      train_and_viz.sh — main training loop
+# Window 1 (play):      manual viz (kill when done)
+# Window 2 (services):  noVNC (websockify port 5999 → VNC :1)
+# Window 3 (auto_tune): auto_tune loop, fires every 15 min
+```
+
+SSH tunnel for VNC/TensorBoard:
+```bash
+ssh -L 5999:localhost:5999 -L 6006:localhost:6006 <user@host>
+# VNC:         http://localhost:5999/vnc.html
+# TensorBoard: http://localhost:6006
+```
+
+### Bugs fixed this session
+
+**1. `train_and_viz.sh` — chunk size doubling bug**
+
+`--max_iterations "$STOP_AT"` was passed on resume. RSL-RL's `learn()` does `tot_iter = checkpoint_iter + num_learning_iterations`, so each chunk grew: 500, 1000, 1500 ... → ~105k total instead of 10k. Fixed to `--max_iterations "$VIZ_INTERVAL"` (always 500 additional iters per chunk).
+
+**2. `train_and_viz.sh` — timeout not killing Isaac Sim**
+
+Isaac Sim ignores SIGTERM. `timeout 90` never killed play.py; it ran indefinitely. Fixed to `timeout --kill-after=10 90` (escalates to SIGKILL after 10s grace period).
+
+**3. VNC visualization — no window appearing**
+
+`isaaclab.python.kit` has `present.enabled=false` (MGPU stability note, irrelevant on single RTX 4090). Added `--/exts/omni.kit.renderer.core/present/enabled=true` to play.py invocation in viz step. Isaac Sim window now renders to VNC display `:1`.
+
+**4. auto_tune cron not running**
+
+No cron daemon available in this container. Auto_tune was never actually firing despite tuning log claiming cron job `21f3e192`. Fixed by running auto_tune as a `while true; sleep 900` loop in `tmux k1_train:3 (auto_tune)`. Will persist across SSH disconnects.
+
+### Current state (leaving overnight)
+
+| | |
+|---|---|
+| RSL-RL iter | ~750 / heading to ~1499 (first doubled chunk — bug was mid-run) |
+| Subsequent chunks | 500 iters each, ~28 min/chunk |
+| ETA to iter 10000 | ~9 hours |
+| Hit rate | 0/47 serves (2.1% — 1 hit observed, very early stage) |
+| auto_tune | Running in tmux window 3, no intervention expected until ~iter 3700 |
+| noVNC | Running in tmux window 2 on port 5999 |
+

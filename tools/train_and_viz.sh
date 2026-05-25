@@ -15,7 +15,7 @@ TASK="k1_tt"
 TASK_EVAL="k1_tt_eval"
 NUM_ENVS=4096
 MAX_ITERS=10000
-VIZ_INTERVAL=1000   # train this many iters between each visualization
+VIZ_INTERVAL=500    # train this many iters between each visualization
 VIZ_DURATION=90     # seconds to run play.py for visualization
 LOG_ROOT="logs/k1_table_tennis"
 PYTHON="python3"
@@ -109,7 +109,7 @@ while [ "$CURRENT_ITER" -lt "$MAX_ITERS" ]; do
             --resume True \
             --load_run "$RESUME_RUN" \
             --checkpoint "$RESUME_CKPT" \
-            --max_iterations "$STOP_AT"
+            --max_iterations "$VIZ_INTERVAL"
     fi
 
     CURRENT_ITER=$STOP_AT
@@ -134,13 +134,14 @@ while [ "$CURRENT_ITER" -lt "$MAX_ITERS" ]; do
     echo "  Open http://localhost:5999/vnc.html to watch"
     echo "──────────────────────────────────────────────────────────"
 
-    # timeout exits 124 on expiry — that's expected and fine
-    DISPLAY=:1 timeout "$VIZ_DURATION" \
+    # Isaac Sim ignores SIGTERM; --kill-after=10 escalates to SIGKILL after 10s
+    DISPLAY=:1 timeout --kill-after=10 "$VIZ_DURATION" \
         $PYTHON legged_lab/scripts/play.py \
             --task "$TASK_EVAL" \
             --num_envs 1 \
             --load_run "$RESUME_RUN" \
             --checkpoint "$RESUME_CKPT" \
+            --/exts/omni.kit.renderer.core/present/enabled=true \
         || true
 
     echo ""
