@@ -1,8 +1,10 @@
 # K1 Table Tennis Tuning Log
 
+> **For Claude agents starting a new session: read `CLAUDE.md` first, then `tail -80 TUNING_LOG.md` for the latest session.**
+
 ## Reconnecting after overnight / disconnect
 
-Training runs in `tmux` and survives SSH disconnects. The `auto_tune` cron job (`21f3e192`, every 15 min) monitors and intervenes autonomously — you don't need to babysit it.
+Training runs in `tmux` and survives SSH disconnects. `auto_tune` runs as a `while true; sleep 900` loop in tmux window 3 and fires every 15 min — you don't need to babysit it. (There is no cron daemon in this container; any earlier references to cron job IDs are stale.)
 
 ```bash
 # Reconnect and check status
