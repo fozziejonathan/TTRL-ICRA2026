@@ -17,8 +17,9 @@ metrics. The most recent session is always at the bottom.
 |---|---|
 | Run | `2026-05-26_04-04-16` |
 | Iteration | 10482 — **training stopped at MAX_ITERS=10000, needs resume** |
-| Hit rate | **94.5%** (target 96% — nearly there) |
-| Success rate | **77.4%** (target 92% — still climbing) |
+| Hit rate | **~94%** confirmed in play.py (target 96% — nearly there) |
+| Success rate | **~17–20% in play.py** (TensorBoard 77.4% is inflated — see TUNING_LOG) |
+| IsaacSim version | **5.1.0** — paper used 4.5.0; authors warn 5.0+ degrades success rate |
 | Latest checkpoint | `logs/k1_table_tennis/2026-05-26_04-04-16/model_10482.pt` |
 
 **To resume:** bump `MAX_ITERS` in `tools/train_and_viz.sh` (currently 10000) to 20000, then relaunch `bash tools/train_and_viz.sh` in tmux window 0. Script auto-detects the latest checkpoint.
@@ -52,18 +53,21 @@ ssh -L 5999:localhost:5999 -L 6006:localhost:6006 <user@host>
 To manually launch a visualization (use window 1, kill training first or verify GPU headroom):
 ```bash
 DISPLAY=:1 python3 legged_lab/scripts/play.py \
-    --task k1_tt_eval --num_envs 1 \
+    --task k1_tt_eval --num_envs 1 --predictor \
     --load_run <run_dir> --checkpoint <model_N.pt> \
     --/exts/omni.kit.renderer.core/present/enabled=true
 ```
 
 ## Critical gotchas
 
+- **Always pass `--predictor` to play.py** — the policy was trained with `OnPolicyPredictorRegressionRunner`; omitting `--predictor` loads the wrong runner and produces garbage actions (0% hit rate)
 - **Isaac Sim ignores SIGTERM** — always `kill -9` or `timeout --kill-after=10 <dur>`
 - **No cron daemon in this container** — auto_tune runs as a tmux sleep loop (window 3), not cron; any log entries referencing cron job IDs are stale
 - **Never resume with changed reward weights** — corrupts the PPO critic (see MorFiC, arXiv:2603.14554); always `--clean` restart when changing weights
 - **VNC rendering disabled by default** — Isaac Sim needs `--/exts/omni.kit.renderer.core/present/enabled=true` to render on display `:1`
 - **train_and_viz.sh chunk size** — pass `--max_iterations $VIZ_INTERVAL`, not `$STOP_AT`; RSL-RL's `learn()` adds to checkpoint iter so passing the absolute target causes exponential chunk growth
+- **IsaacSim 5.x degrades success rate** — paper achieved 96%/92% on IsaacSim 4.5.0; we're on 5.1.0 and the authors explicitly warn 5.0+ hurts success rate; hit rate is fine but success plateau may be a simulator issue
+- **TensorBoard success rate is inflated** — `Train/TT_success_rate` uses a position-based zone check, not a physics bounce; actual success rate in play.py is ~17–20% vs 77% shown in TB; hit rate (TB vs play.py) is accurate
 
 ## auto_tune phases (fires every 15 min, tmux window 3)
 

@@ -400,3 +400,62 @@ No auto_tune intervention fired — all phases were already satisfied or moot.
 
 Bump `MAX_ITERS` in `tools/train_and_viz.sh` from 10000 → 20000 and resume.
 Script will auto-detect `model_10482.pt` and continue without `--clean`.
+
+---
+
+## 2026-05-26 (evening) — Root cause research: IsaacSim version + --predictor bug + eval config
+
+### Critical finding: IsaacSim 5.x degrades success rate
+
+We are running **IsaacSim 5.1.0-rc.19**. The purdue-tracelab paper (and Kyle's K1 fork) were
+developed and tested on **IsaacSim 4.5.0 + Isaac Lab 2.1.0**. The purdue-tracelab README
+explicitly states (twice): *"We notice a significant performance drop of the same training
+config in updated IsaacSim 5.0+."*
+
+This is almost certainly the primary reason success rate is ~17–20% in play.py despite
+the paper reporting ≥92%. The hit rate (~94%) is unaffected. Success (ball placement) is
+more sensitive to physics simulation differences.
+
+**Implication:** Reaching 92% success on IS5.1 may require different tuning than the paper
+used. The 92% target may need to be reconsidered if we can't downgrade to IS4.5.
+
+### Bug: --predictor flag missing from every viz invocation
+
+All visualization attempts before this session were loaded with `OnPolicyRunner` instead
+of `OnPolicyPredictorRegressionRunner`, because `--predictor` was never passed to play.py.
+The policy was trained with the predictor runner; loading with the wrong runner produces
+garbage actions (0% hit rate regardless of checkpoint quality). Once `--predictor` was
+added, hit rate immediately confirmed at ~94% (matching TensorBoard).
+
+Fixed in CLAUDE.md play.py example command and Critical Gotchas section.
+
+### Bug: eval config ball speed "fix" was wrong
+
+Earlier this session we removed ball speed overrides from `K1TT_EvalEnvCfg` on the theory
+that they made the viz look worse than TensorBoard. The real cause was the missing
+`--predictor` flag. The eval ball speeds (`x: -6.5/-5.2`) are intentional — they match
+the paper's T1 evaluation protocol exactly. Reverted the removal.
+
+Training ball speeds (default): `x: (-5.5, -4.5)`, `y: ±0.8`, `z: (1.6, 1.7)`
+Eval ball speeds (paper protocol): `x: (-6.5, -5.2)`, `y: (-0.6, 0.2)`, `z: (1.5, 1.9)`
+
+### TensorBoard success rate is inflated
+
+`Train/TT_success_rate` uses a pure position check (ball within opponent table zone
+coordinates), not a physics bounce event. This can trigger when a ball clips the zone
+while in flight. Play.py uses the same logic and also shows ~17–20% success — consistent.
+
+The hit rate TB metric (94.5%) IS accurate and confirmed by play.py (~94.1%).
+
+### Kyle's fork results
+
+`reward_table_success = 100` in Kyle's fork — same as ours. The 98% hit rate Kyle
+reported was on IsaacSim 4.5.0. His success rate was not confirmed; paper baseline is 28%.
+
+### Summary of files changed this session
+
+| File | Change |
+|------|--------|
+| `legged_lab/envs/k1_tt/k1_tt_config.py` | Reverted eval ball speed removal |
+| `CLAUDE.md` | Added `--predictor` to play.py command; updated training state; added 4 new gotchas |
+| `tools/check_training.py` | Fixed iter-0 contamination of mean/trend (kept) |
