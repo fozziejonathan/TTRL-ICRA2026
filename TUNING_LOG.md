@@ -348,3 +348,55 @@ No cron daemon available in this container. Auto_tune was never actually firing 
 | auto_tune | Running in tmux window 3, no intervention expected until ~iter 3700 |
 | noVNC | Running in tmux window 2 on port 5999 |
 
+
+---
+
+## 2026-05-26 — check_training.py and eval config fixes; training stopped at iter 10482
+
+### Training state on reconnect
+
+New run `2026-05-26_04-04-16` had completed and stopped (GPU idle, 0% utilisation).
+`train_and_viz.sh` hit its hardcoded `MAX_ITERS=10000` and exited normally.
+
+`check_training.py` was reporting misleading numbers:
+- Hit rate: **72.6%** (wrong) → actual **94.5%**
+- Success rate: **54.9%** (wrong) → actual **77.4%**
+- Trend "+94.5% over last 10 iters" was comparing iter 10399 vs iter 0, not a recent window
+
+### Bug 1: check_training.py — iter-0 zero contaminates mean and trend
+
+TensorBoard only has 6 logged events for `Train/TT_hit_rate` and `Train/TT_success_rate`.
+`last_n_values(..., 10)` grabbed all 6 including the iter=0 initialisation point (always 0.0),
+which dragged the reported mean well below the true recent value.
+The "trend" was `vals[-1] - vals[0]` = latest minus iter-0, not a recent-window trend.
+
+**Fix:** filter out `step == 0` events in `last_n_values`. Report the latest value directly
+(not a mean), and label the trend with the actual iteration span it covers.
+
+### Bug 2: K1TT_EvalEnvCfg — ball speeds faster than training
+
+`K1TT_EvalEnvCfg` overrode ball speeds to `x: (-6.5, -5.2)` while training uses the
+base defaults `x: (-5.5, -4.5)` — roughly 15–45% faster. This made the visualization
+look much worse than TensorBoard metrics suggested (robot trained on slow balls, viz tested
+on fast balls).
+
+**Fix:** removed the three `ball_speed_*_range` overrides from `K1TT_EvalEnvCfg` so it
+inherits the training distribution. Eval and training now use identical ball speeds.
+
+### Actual state at iter 10482
+
+| Metric | Value | Target |
+|--------|-------|--------|
+| Hit rate | **94.5%** | 96% |
+| Success rate | **77.4%** | 92% |
+| contact_weight | 150 | — |
+| success_weight | 100 | — |
+| std_h | 0.4 | — |
+
+Both metrics climbing fast (hit +36.7%, success +55.7% over last 400 iters).
+No auto_tune intervention fired — all phases were already satisfied or moot.
+
+### Next step
+
+Bump `MAX_ITERS` in `tools/train_and_viz.sh` from 10000 → 20000 and resume.
+Script will auto-detect `model_10482.pt` and continue without `--clean`.

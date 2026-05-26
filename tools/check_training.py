@@ -13,6 +13,8 @@ def latest_run():
 def last_n_values(ea, tag, n=10):
     try:
         events = ea.Scalars(tag)
+        # Skip the iter-0 initialisation point (always 0, skews mean and trend)
+        events = [e for e in events if e.step > 0]
         return [(e.step, e.value) for e in events[-n:]]
     except KeyError:
         return []
@@ -49,9 +51,12 @@ def run():
     ]:
         vals = last_n_values(ea, tag, 10)
         if vals:
-            recent = mean(vals)
-            trend = vals[-1][1] - vals[0][1]
-            print(f"  {label}: {recent:.1%}  (trend last 10 iters: {trend:+.1%})")
+            latest = vals[-1][1]
+            # Trend: change over the available recent window (skip if only 1 point)
+            trend = vals[-1][1] - vals[0][1] if len(vals) > 1 else 0.0
+            span = vals[-1][0] - vals[0][0] if len(vals) > 1 else 0
+            trend_str = f"  (trend over {span} iters: {trend:+.1%})" if span > 0 else ""
+            print(f"  {label}: {latest:.1%}{trend_str}")
 
     # --- Key reward episode totals ---
     rewards = {

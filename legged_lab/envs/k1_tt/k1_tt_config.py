@@ -295,10 +295,7 @@ class K1TT_EvalEnvCfg(K1TableTennisEnvCfg):
             "pitch": (-0.02, 0.02),
             "yaw": (-0.02, 0.02),
         }
-        # serving range
-        self.ball.ball_speed_x_range = (-6.5, -5.2)
-        self.ball.ball_speed_y_range = (-0.6, 0.2)
-        self.ball.ball_speed_z_range = (1.5, 1.9)
+        # serving range — match training distribution so viz reflects TensorBoard metrics
 
 
 @configclass

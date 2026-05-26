@@ -11,15 +11,17 @@ Branch: `feature/k1-tt`. Goal: ≥96% hit rate, ≥92% success rate.
 bug fix, and training run. The top section has the reconnect checklist and morning health
 metrics. The most recent session is always at the bottom.
 
-## Current training state (last updated 2026-05-25 evening)
+## Current training state (last updated 2026-05-26 evening)
 
 | | |
 |---|---|
-| Run | `2026-05-25_19-47-25` |
-| Iteration | ~3022 / 10000 |
-| Hit rate | 6.4% and climbing fast |
-| Success rate | 0% — expected, typically appears around iter 5000+ |
-| Latest checkpoint | `logs/k1_table_tennis/2026-05-25_19-47-25/model_3000.pt` |
+| Run | `2026-05-26_04-04-16` |
+| Iteration | 10482 — **training stopped at MAX_ITERS=10000, needs resume** |
+| Hit rate | **94.5%** (target 96% — nearly there) |
+| Success rate | **77.4%** (target 92% — still climbing) |
+| Latest checkpoint | `logs/k1_table_tennis/2026-05-26_04-04-16/model_10482.pt` |
+
+**To resume:** bump `MAX_ITERS` in `tools/train_and_viz.sh` (currently 10000) to 20000, then relaunch `bash tools/train_and_viz.sh` in tmux window 0. Script auto-detects the latest checkpoint.
 
 ## Tmux session: `k1_train`
 
