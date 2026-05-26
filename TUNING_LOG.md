@@ -459,3 +459,44 @@ reported was on IsaacSim 4.5.0. His success rate was not confirmed; paper baseli
 | `legged_lab/envs/k1_tt/k1_tt_config.py` | Reverted eval ball speed removal |
 | `CLAUDE.md` | Added `--predictor` to play.py command; updated training state; added 4 new gotchas |
 | `tools/check_training.py` | Fixed iter-0 contamination of mean/trend (kept) |
+
+---
+
+## 2026-05-26 (late evening) — IS4.5.0 environment setup; fresh training started
+
+### Setup
+
+- Created Python 3.10 venv at `~/.venv/isaac45/` (IS4.5 requires Python 3.10)
+- Installed `isaacsim[all]==4.5.0.0` from NVIDIA PyPI
+- Installed `isaaclab==2.1.0` from NVIDIA PyPI
+- Fixed broken torch install (partial `-orch` from isaacsim[all]); reinstalled `torch==2.5.1+cu124`
+- Installed project: `pip install -e .` and `pip install -e rsl_rl/`
+- New script: `tools/train_and_viz_is45.sh` — identical logic to `train_and_viz.sh` but uses `~/.venv/isaac45/bin/python` and `MAX_ITERS=15000`
+
+### Why IS4.5.0
+
+Paper (purdue-tracelab) explicitly warns: "significant performance drop in updated IsaacSim 5.0+."
+IS5.1 run confirmed this: 94% hit rate but only ~17–20% success in play.py.
+
+### Key advantage of this run vs Kyle's
+
+Kyle's fork has the `has_touch_paddle` bug (new_hits always False for fast balls), meaning
+`reward_table_success`, `reward_future_pass_net`, and `reward_future_landing_dis` were all
+dead in his training. He got 28% success with zero success reward signal.
+
+This run has the bug fixed → success rewards active + IS4.5.0 physics.
+Hypothesis: should significantly exceed 28% success and approach the 92% target.
+
+### Run parameters
+
+| Parameter | Value |
+|-----------|-------|
+| MAX_ITERS | 15000 |
+| VIZ_INTERVAL | 500 |
+| NUM_ENVS | 4096 |
+| Reward weights | contact=150, table_success=100, pass_net=100, landing_dis=60 (unchanged) |
+| Clean start | yes |
+| Tmux window | `k1_train:is45_train` |
+| Log | `/tmp/is45_train.log` |
+
+Monitor: `tail -f /tmp/is45_train.log` or attach `tmux attach -t k1_train` → window `is45_train`

@@ -11,27 +11,33 @@ Branch: `feature/k1-tt`. Goal: ≥96% hit rate, ≥92% success rate.
 bug fix, and training run. The top section has the reconnect checklist and morning health
 metrics. The most recent session is always at the bottom.
 
-## Current training state (last updated 2026-05-26 evening)
+## Current training state (last updated 2026-05-26 late evening)
 
 | | |
 |---|---|
+**IS5.1.0 run (complete, saved):**
 | Run | `2026-05-26_04-04-16` |
-| Iteration | 10482 — **training stopped at MAX_ITERS=10000, needs resume** |
-| Hit rate | **~94%** confirmed in play.py (target 96% — nearly there) |
-| Success rate | **~17–20% in play.py** (TensorBoard 77.4% is inflated — see TUNING_LOG) |
-| IsaacSim version | **5.1.0** — paper used 4.5.0; authors warn 5.0+ degrades success rate |
-| Latest checkpoint | `logs/k1_table_tennis/2026-05-26_04-04-16/model_10482.pt` |
+| Iteration | 10482 (stopped, saved as `checkpoints/` — see MODELS.md) |
+| Hit rate | ~94% (confirmed in play.py) |
+| Success rate | ~17–20% in play.py — limited by IS5.x physics |
 
-**To resume:** bump `MAX_ITERS` in `tools/train_and_viz.sh` (currently 10000) to 20000, then relaunch `bash tools/train_and_viz.sh` in tmux window 0. Script auto-detects the latest checkpoint.
+**IS4.5.0 run (active — tmux window `is45_train`):**
+| Script | `tools/train_and_viz_is45.sh --clean` |
+| Python | `~/.venv/isaac45/bin/python` (IS4.5.0 + Isaac Lab 2.1.0) |
+| Max iters | 15000 (extend by editing `MAX_ITERS` in the script) |
+| Started | 2026-05-26 late evening |
+| Rationale | IS4.5.0 = paper's physics; `has_touch_paddle` fix active → success rewards live |
 
 ## Tmux session: `k1_train`
 
 | Window | Name | What's running |
 |--------|------|----------------|
-| 0 | bash | `train_and_viz.sh` — main loop (500-iter chunks + 90s viz) |
+| 0 | bash | idle (IS5.1 run complete) |
 | 1 | play | manual viz — run play.py here when needed |
 | 2 | services | noVNC (websockify port 5999 → VNC :1) |
 | 3 | auto_tune | `while true; sleep 900; python3 tools/auto_tune.py` loop |
+| 4 | is45_setup | IS4.5.0 venv setup (complete) |
+| 5 | is45_train | **`train_and_viz_is45.sh --clean`** — IS4.5.0 training, 15k iters |
 
 ## Key commands
 
