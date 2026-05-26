@@ -13,9 +13,10 @@ metrics. The most recent session is always at the bottom.
 
 ## Current training state (last updated 2026-05-26 late evening)
 
+**IS5.1.0 run (complete, saved):**
+
 | | |
 |---|---|
-**IS5.1.0 run (complete, saved):**
 | Run | `2026-05-26_04-04-16` |
 | Iteration | 10482 (stopped, saved as `checkpoints/` — see MODELS.md) |
 | Hit rate | ~94% (confirmed in play.py) |
