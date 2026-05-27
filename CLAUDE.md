@@ -11,7 +11,7 @@ Branch: `feature/k1-tt`. Goal: ≥96% hit rate, ≥92% success rate.
 bug fix, and training run. The top section has the reconnect checklist and morning health
 metrics. The most recent session is always at the bottom.
 
-## Current training state (last updated 2026-05-26 late evening)
+## Current training state (last updated 2026-05-27)
 
 **IS5.1.0 run (complete, saved):**
 
@@ -22,12 +22,18 @@ metrics. The most recent session is always at the bottom.
 | Hit rate | ~94% (confirmed in play.py) |
 | Success rate | ~17–20% in play.py — limited by IS5.x physics |
 
-**IS4.5.0 run (active — tmux window `is45_train`):**
-| Script | `tools/train_and_viz_is45.sh --clean` |
+**IS4.5.0 run (complete — checkpoint saved as `model_14500.pt`):**
+| Script | `tools/train_and_viz_is45.sh` |
 | Python | `~/.venv/isaac45/bin/python` (IS4.5.0 + Isaac Lab 2.1.0) |
-| Max iters | 15000 (extend by editing `MAX_ITERS` in the script) |
-| Started | 2026-05-26 late evening |
-| Rationale | IS4.5.0 = paper's physics; `has_touch_paddle` fix active → success rewards live |
+| Iteration | ~14500 |
+| Hit rate | ~94% (plateaued) |
+| Success rate | **>50%** (confirmed in play.py — well above 28% Kyle baseline) |
+| Status | Stopped; checkpoint saved. Next run is a fine-tuning run, not continuation. |
+
+**Next planned run — fine-tuning from model_14500.pt (actor-only warm start):**
+| Change | `reward_future_landing_dis` threshold: 3.0 → 0.6 |
+| Rationale | See TUNING_LOG 2026-05-27 afternoon session for full research notes |
+| Method | Actor-only warm start: load actor + predictor weights from model_14500.pt, fresh critic |
 
 ## Tmux session: `k1_train`
 
@@ -75,6 +81,8 @@ DISPLAY=:1 python3 legged_lab/scripts/play.py \
 - **train_and_viz.sh chunk size** — pass `--max_iterations $VIZ_INTERVAL`, not `$STOP_AT`; RSL-RL's `learn()` adds to checkpoint iter so passing the absolute target causes exponential chunk growth
 - **IsaacSim 5.x degrades success rate** — paper achieved 96%/92% on IsaacSim 4.5.0; we're on 5.1.0 and the authors explicitly warn 5.0+ hurts success rate; hit rate is fine but success plateau may be a simulator issue
 - **TensorBoard success rate is inflated** — `Train/TT_success_rate` uses a position-based zone check, not a physics bounce; actual success rate in play.py is ~17–20% vs 77% shown in TB; hit rate (TB vs play.py) is accurate
+- **`reward_future_landing_dis` threshold=3.0 is too generous for precision fine-tuning** — with threshold=3.0 and weight=60, a ball landing 0.1m outside the table still gets +156 reward vs +180 for a perfect shot; the boundary gradient is near-zero; tighten to 0.6 for precision runs (see TUNING_LOG 2026-05-27)
+- **Do not add an out-of-bounds penalty** — the upstream purdue-tracelab repo has `penalty_ball_to_floor` and `penalty_table_fail` commented out; they were tried on this exact system and removed; the PACE paper achieves ≥92% success with positive shaping only
 
 ## auto_tune phases (fires every 15 min, tmux window 3)
 

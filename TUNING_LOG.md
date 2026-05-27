@@ -524,3 +524,99 @@ negative z-velocity at table height; a fly-over typically has mixed or positive 
 ### Clean restart
 
 Training restarted `--clean` at iter 0 with this fix in place.
+
+---
+
+## 2026-05-27 (afternoon) — Reward shaping research; decision to tighten landing_dis threshold
+
+### Status at time of research
+
+IS4.5.0 run reached **~iter 14500** (`model_14500.pt`). Saved checkpoint.
+
+| Metric | Value |
+|--------|-------|
+| Hit rate | ~94% |
+| Success rate | **>50%** (confirmed in play.py — substantially above 28% Kyle baseline) |
+
+Hit rate appears plateaued. Success rate is strong and still climbing. Question raised: should we add an out-of-bounds penalty or amplify the success reward to push success rate toward 92%?
+
+### Research conducted — reward shaping for placement precision
+
+#### Finding 1: The upstream authors tried out-penalties and removed them
+
+The purdue-tracelab TTRL-ICRA2026 repo (the direct upstream of this codebase) contains
+`penalty_ball_to_floor` and `penalty_table_fail` as **commented-out functions** in
+`legged_lab/mdp/rewards.py`. They are not absent — they were written, tested on the same
+system, and removed. The system achieves ≥92% success without them.
+Source: https://github.com/purdue-tracelab/TTRL-ICRA2026
+
+#### Finding 2: `reward_future_landing_dis` threshold=3.0m is too generous at this stage
+
+`reward_future_landing_dis` computes `reward = threshold - dist_to_target`, linear,
+firing once at hit-time via predicted trajectory. With `threshold=3.0` (set in
+`k1_tt_config.py:185`), a ball landing 0.1m *outside* the table edge is ~0.4m from
+the target center → reward = `(3.0 - 0.4) × 60 = +156`. Landing perfectly on center =
+`3.0 × 60 = +180`. The function provides **near-zero gradient at the table boundary** —
+it cannot distinguish "just in" from "just out."
+
+The only signal distinguishing in-bounds from out-of-bounds is `reward_table_success`
+(+100, sparse terminal). At the boundary the total differential is 100 points. This is
+likely the primary cause of the 50% success plateau.
+
+At iter 0, threshold=3.0 made sense to bootstrap learning from a random policy. At
+iter 14500 with >50% success, the agent is past bootstrapping — it needs a sharper
+precision signal.
+
+#### Finding 3: Tightening threshold is equivalent to an implicit out-penalty
+
+With `threshold=0.6`, a ball landing 0.7m from target (well outside the table on most
+trajectories) gets `(0.6 - 0.7) × 60 = -6` from landing_dis alone. Together with
+`reward_table_success` at +100 for in-bounds, the total gradient at the boundary becomes
+much sharper without adding a new reward term.
+
+#### Finding 4: The PACE paper uses only positive shaping, no out-penalty
+
+PACE (arXiv:2509.21690) uses dense physics-guided rewards for predicted landing position
+only — no failure penalties. Its ablation shows success rate is driven by landing signal
+precision, not failure penalties. The paper explicitly states: "binary metrics such as
+successful hit or return are too sparse to effectively train an RL agent" — the solution
+was denser/more precise positive guidance, not adding penalties.
+Source: https://arxiv.org/abs/2509.21690
+
+#### Finding 5: Tebbe 2021 uses pure negative distance reward for placement
+
+"Sample-efficient RL in Robotic Table Tennis" (arXiv:2011.03275) uses
+`R = −|desired_landing − actual_landing|` — entirely negative, equivalent to our
+`landing_dis` with threshold=0 (always penalizes distance from target). Achieves accurate
+returns in <200 training balls on a robot arm. This is the asymptotic case of tightening
+our threshold.
+Source: https://arxiv.org/abs/2011.03275
+
+### Decision: tighten `reward_future_landing_dis` threshold 3.0 → 0.6, actor-only warm start
+
+**What:** Change `params={"threshold": 3.0}` → `params={"threshold": 0.6}` in
+`k1_tt_config.py`. No new reward terms.
+
+**Why not out-penalty:** Upstream authors tried and removed it. Adding a new term risks
+conflicting gradients. The threshold change addresses the root cause (weak boundary
+signal) rather than patching it.
+
+**Why not bump success_weight:** `reward_table_success` already fires only for "in" shots.
+Bumping its weight amplifies the same signal that `landing_dis` at tight threshold also
+provides — redundant. The threshold change sharpens the landing gradient everywhere, not
+just at the discrete table boundary.
+
+**Why actor-only warm start from model_14500.pt:** Changing reward weights with a full
+resume corrupts the PPO critic (see MorFiC, arXiv:2603.14554; CLAUDE.md gotcha). A clean
+restart throws away 14500 iters of learned motor skill. Actor-only warm start preserves
+the hitting policy while the critic re-learns the value function under the new reward shape.
+
+**Actor-only warm start approach:** Patch `OnPolicyPredictorRegressionRunner.load()` to
+accept an `actor_only=True` flag that loads only `actor.*` keys (plus predictor weights)
+from the checkpoint state dict, skips critic keys, and does not restore the optimizer or
+iteration counter.
+
+### Next step
+
+Implement threshold change + actor-only warm start patch, then launch fine-tuning run
+from `model_14500.pt`.
