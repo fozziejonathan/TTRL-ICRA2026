@@ -500,3 +500,27 @@ Hypothesis: should significantly exceed 28% success and approach the 92% target.
 | Log | `/tmp/is45_train.log` |
 
 Monitor: `tail -f /tmp/is45_train.log` or attach `tmux attach -t k1_train` → window `is45_train`
+
+---
+
+## 2026-05-27 — Fix has_touch_opponent_table_just_now fly-over inflation; clean restart
+
+Applied immediately at iter 0 before 10+ hours of training would have been wasted.
+
+### Bug
+
+`has_touch_opponent_table_just_now` used a pure position check. A ball descending
+toward a long or wide miss still passed through the z=0.70–0.85 zone while x=0–1.37
+was satisfied, triggering the check even though the ball never bounced on the table.
+Effect: TensorBoard `Train/TT_success_rate` inflated ~4× vs play.py measured rate.
+Also inflated `reward_table_success` during training — robot got rewarded for balls
+that flew over the table at the right height, not just balls that actually landed.
+
+### Fix (`legged_lab/envs/base/tt_env.py`)
+
+Added `vz < 0` (ball moving downward) to the zone check. A bounce always has
+negative z-velocity at table height; a fly-over typically has mixed or positive vz.
+
+### Clean restart
+
+Training restarted `--clean` at iter 0 with this fix in place.

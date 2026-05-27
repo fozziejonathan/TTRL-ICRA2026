@@ -1131,6 +1131,10 @@ class TTEnv(VecEnv):
         # print(f'bz{bz}')
         # print(f'ncz_max{ncz_max}')
         # 4) Build masks
+        # vz < 0 gates out fly-overs: ball must be moving downward to count as a bounce.
+        # Without this, a ball descending toward a long/wide miss still triggers the check
+        # while passing through the z=0.70-0.85 zone, inflating the success metric ~4x.
+        vz = self.ball_linvel[:, 2]
         self.has_touch_opponent_table_just_now = (
             (bx >= tcx_min)
             & (bx <= tcx_max)
@@ -1138,6 +1142,7 @@ class TTEnv(VecEnv):
             & (by <= tcy_max)
             & (bz >= tcz_min)
             & (bz <= tcz_max)
+            & (vz < 0)
         )
         has_touch_own_table_just_now = (
             (bx >= ncx_min)
