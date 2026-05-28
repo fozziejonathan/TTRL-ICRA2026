@@ -25,19 +25,26 @@ metrics. The most recent session is always at the bottom.
 **IS4.5.0 base run (complete — best checkpoint `model_14500.pt`, final `model_15469.pt`):**
 | Script | `tools/train_and_viz_is45.sh` |
 | Python | `~/.venv/isaac45/bin/python` (IS4.5.0 + Isaac Lab 2.1.0) |
-| Iteration | 15469 (ran past 14500 save point; both checkpoints saved) |
+| Iteration | 15469 |
 | Hit rate | ~95.8% (plateaued) |
-| Success rate | ~20–22% (TB) — plateaued; root cause: weak gradient at table boundary |
-| Status | Complete. Fine-tuning now running with rectangular landing_dis reward. |
+| Success rate | ~20–22% — plateaued; root cause: weak gradient at table boundary |
+| Status | Complete. Seed for fine-tune. |
 
-**IS4.5.0 fine-tune run (IN PROGRESS — actor-only warm start from model_14500.pt):**
+**IS4.5.0 fine-tune run v2 (IN PROGRESS — clean restart from model_14500.pt):**
 | Script | `tools/finetune_is45.sh` |
 | Python | `~/.venv/isaac45/bin/python` (IS4.5.0) |
 | Seed | `logs/k1_table_tennis/2026-05-27_20-46-44/model_14500.pt` |
-| Reward change | `reward_future_landing_dis`: circular threshold=3.0 → signed rectangular distance |
-| Load mode | Actor-only: actor + predictor weights loaded, critic re-initialised |
-| Max iters | 10000 (new run starting from iter 0) |
+| Reward change | `reward_future_landing_dis`: clamped rectangular — `max(signed_dist_to_table, 0)` |
+| Load mode | Actor-only: actor + predictor loaded, critic re-initialised |
+| Max iters | 15000 |
+| No VIZ | VIZ removed from script — run play.py manually in window 1 |
 | Status | **Running in tmux window `is45_train`** (launched 2026-05-28) |
+
+**Previous fine-tune attempt (ABANDONED — policy collapsed):**
+| Reward used | Signed rectangular with negatives — caused hitting-avoidance collapse |
+| Peak before collapse | iter ~4750: 93% hit / 36% success |
+| Collapse | iter 6000–8000: hit rate 93% → 0.3% as policy learned not-hitting = safer than hitting-and-missing |
+| Fix | Clamp reward to 0 from below; restart from model_14500.pt |
 
 ## Tmux session: `k1_train`
 
@@ -48,7 +55,7 @@ metrics. The most recent session is always at the bottom.
 | 2 | services | noVNC (websockify port 5999 → VNC :1) |
 | 3 | auto_tune | `while true; sleep 900; python3 tools/auto_tune.py` loop |
 | 4 | is45_setup | IS4.5.0 venv setup (complete) |
-| 6 | is45_train | **`finetune_is45.sh`** — IS4.5.0 fine-tune, rectangular landing_dis, actor-only warm start |
+| 6 | is45_train | **`finetune_is45.sh`** — IS4.5.0 fine-tune v2, clamped rectangular landing_dis, actor-only warm start, no VIZ |
 
 ## Key commands
 
@@ -85,7 +92,8 @@ DISPLAY=:1 python3 legged_lab/scripts/play.py \
 - **train_and_viz.sh chunk size** — pass `--max_iterations $VIZ_INTERVAL`, not `$STOP_AT`; RSL-RL's `learn()` adds to checkpoint iter so passing the absolute target causes exponential chunk growth
 - **IsaacSim 5.x degrades success rate** — paper achieved 96%/92% on IsaacSim 4.5.0; we're on 5.1.0 and the authors explicitly warn 5.0+ hurts success rate; hit rate is fine but success plateau may be a simulator issue
 - **TensorBoard success rate is inflated** — `Train/TT_success_rate` uses a position-based zone check, not a physics bounce; actual success rate in play.py is ~17–20% vs 77% shown in TB; hit rate (TB vs play.py) is accurate
-- **`reward_future_landing_dis` now uses signed distance to the rectangular table zone** — positive inside, negative outside, zero at any edge; no `threshold` param; see `legged_lab/mdp/rewards.py`. The old circular distance-to-point formulation (threshold=3.0) gave near-zero gradient at the table boundary and rewarded many out-of-bounds shots.
+- **`reward_future_landing_dis` uses clamped rectangular distance** — `max(signed_dist_to_table_rect, 0)`; positive inside (up to +0.675 at center), zero at any edge or outside; no `threshold` param; see `legged_lab/mdp/rewards.py`. The old circular formulation (threshold=3.0) gave near-zero gradient at the boundary.
+- **Never use negative landing_dis reward** — a previous attempt used the raw signed distance (negative outside table). The policy collapsed over ~3000 iters: it learned that not-hitting = 0 reward is safer than hitting-and-missing = negative reward. Hit rate went 93% → 0.3%. Always clamp to zero from below.
 - **Do not add an out-of-bounds penalty** — the upstream purdue-tracelab repo has `penalty_ball_to_floor` and `penalty_table_fail` commented out; they were tried on this exact system and removed; the PACE paper achieves ≥92% success with positive shaping only
 
 ## auto_tune phases (fires every 15 min, tmux window 3)

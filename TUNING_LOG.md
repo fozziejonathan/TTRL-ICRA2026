@@ -692,3 +692,73 @@ Started fresh `finetune_is45.sh` in tmux window `is45_train`. Parameters:
 | Python | `~/.venv/isaac45/bin/python` (IS4.5.0) |
 | MAX_ITERS | 10000 (iter 0–10000 of new run) |
 | VIZ_INTERVAL | 500 |
+
+### Iter 4749 health check (2026-05-28 morning)
+
+`check_training.py` snapshot:
+
+| Metric | Value | 200-iter trend |
+|--------|-------|---------------|
+| Success rate | 36.7% | +6.8% |
+| Hit rate | 93.4% | +14.5% |
+| reward_future_pass_net avg | 0.781 (weight=100) | — |
+| reward_future_landing_dis avg | 0.217 (weight=60) | — |
+| reward_contact avg | 1.100 (weight=150) | — |
+| reward_table_success avg | 0.369 (weight=100) | — |
+
+Run active in tmux `is45_train`, 3.36s/iter, ETA ~14 min to next VIZ_INTERVAL checkpoint.
+Rectangular `landing_dis` reward confirmed working — success rate up ~15 points from 20–22% plateau.
+Hit rate recovering from actor-only warm start dip; strong upward trend.
+
+---
+
+## 2026-05-28 — Fine-tune v1 post-mortem + v2 launch
+
+### What went wrong with fine-tune v1
+
+**Timeline:**
+- 00:55 – 06:41: finetune_is45.sh ran normally, 12 × 500-iter chunks, reached iter ~6000
+- 06:15: training process (PID 379038) hung mid-chunk — saved model_5988.pt then stalled
+- 06:41 – 15:29: 9-hour gap; finetune_is45.sh blocked waiting for PID 379038 to exit
+- 15:29: manual intervention killed hung process; continue_is45.sh launched from model_6000.pt
+
+**Policy collapse (fine-tune v1 reward: signed rectangular with negatives):**
+
+| Iter | Hit rate | Success rate |
+|------|----------|--------------|
+| ~4750 | 93.4% | 36.7% |
+| 6499 | 77.7% | 31.4% |
+| 6699 | 46.5% | 18.9% |
+| 7699 | 0.3% | 0.0% |
+
+Root cause: `reward_future_landing_dis` returned negative values for out-of-bounds shots.
+The policy learned that **not hitting = 0 reward** is safer than **hitting-and-missing = negative reward**.
+Over ~3000 iterations the actor fully regressed to never hitting the ball.
+
+This is the standard positive-only shaping principle: the PACE paper achieves ≥92% success
+using only positive rewards. Adding negative shaping to a PPO agent creates a zero-reward
+trap — the agent converges to the no-op policy.
+
+### Fix: clamp reward_future_landing_dis to zero from below
+
+```python
+# legged_lab/mdp/rewards.py
+reward = torch.clamp(torch.min(margin_x, margin_y), min=0.0)
+```
+
+Positive inside table (up to +0.675 at center), zero anywhere outside. No gradient toward
+table from outside, but no incentive to avoid hitting either. The contact and pass_net rewards
+provide the hitting incentive.
+
+### Fine-tune v2 parameters
+
+| Parameter | Value |
+|-----------|-------|
+| Seed | `logs/k1_table_tennis/2026-05-27_20-46-44/model_14500.pt` |
+| Load mode | Actor-only (critic re-initialised) |
+| Reward | `reward_future_landing_dis` clamped to `[0, inf)` |
+| Max iters | 15000 |
+| VIZ | Removed — was causing 9-hour hangs (Isaac Sim SIGTERM issue); run play.py manually |
+| Script | `tools/finetune_is45.sh` (rewritten — no VIZ blocks, MAX_ITERS=15000) |
+
+Launched in tmux window `is45_train` 2026-05-28 evening.

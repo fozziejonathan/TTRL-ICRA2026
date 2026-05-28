@@ -761,7 +761,7 @@ def reward_future_landing_dis(
     pred_y = env.predict_y_land
     margin_x = torch.min(pred_x - x_min, x_max - pred_x)
     margin_y = torch.min(pred_y - y_min, y_max - pred_y)
-    reward = torch.min(margin_x, margin_y)  # most-constrained edge
+    reward = torch.clamp(torch.min(margin_x, margin_y), min=0.0)  # positive inside, 0 outside
 
     mask = env.ball_landing_dis_rew
     reward = torch.where(mask, reward, torch.zeros_like(reward))

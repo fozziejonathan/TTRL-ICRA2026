@@ -469,11 +469,26 @@ class OnPolicyPredictorRegressionRunner(OnPolicyRunner):  # noqa: C901
         if self.logger_type in ["neptune", "wandb"] and not self.disable_logs:
             self.writer.save_model(path, self.current_learning_iteration)
 
-    def load(self, path: str, load_optimizer: bool = True):
-        """Load PPO policy and auxiliary predictor if present in checkpoint."""
+    def load(self, path: str, load_optimizer: bool = True, actor_only: bool = False):
+        """Load PPO policy and auxiliary predictor if present in checkpoint.
+
+        actor_only=True loads only actor weights (plus predictor) from the checkpoint,
+        leaving the critic freshly initialised. Use when resuming with changed reward
+        weights to avoid critic corruption (see MorFiC arXiv:2603.14554).
+        """
         loaded_dict = torch.load(path, weights_only=False)
         # -- PPO model
-        resumed_training = self.alg.policy.load_state_dict(loaded_dict["model_state_dict"])
+        if actor_only:
+            full_state = loaded_dict["model_state_dict"]
+            # Strip "actor." prefix and load directly onto the actor submodule,
+            # bypassing the policy's custom load_state_dict wrapper (which returns bool).
+            actor_state = {k[len("actor."):]: v for k, v in full_state.items() if k.startswith("actor.")}
+            self.alg.policy.actor.load_state_dict(actor_state, strict=True)
+            print(f"[actor_only] Loaded {len(actor_state)} actor keys from checkpoint. "
+                  f"Critic re-initialised from scratch.")
+            resumed_training = False  # fresh critic; don't restore iter or optimizer
+        else:
+            resumed_training = self.alg.policy.load_state_dict(loaded_dict["model_state_dict"])
         # -- RND
         if self.alg.rnd and "rnd_state_dict" in loaded_dict:
             self.alg.rnd.load_state_dict(loaded_dict["rnd_state_dict"])
