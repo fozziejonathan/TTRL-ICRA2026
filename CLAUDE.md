@@ -11,7 +11,7 @@ Branch: `feature/k1-tt`. Goal: ≥96% hit rate, ≥92% success rate.
 bug fix, and training run. The top section has the reconnect checklist and morning health
 metrics. The most recent session is always at the bottom.
 
-## Current training state (last updated 2026-05-27)
+## Current training state (last updated 2026-05-28)
 
 **IS5.1.0 run (complete, saved):**
 
@@ -22,18 +22,22 @@ metrics. The most recent session is always at the bottom.
 | Hit rate | ~94% (confirmed in play.py) |
 | Success rate | ~17–20% in play.py — limited by IS5.x physics |
 
-**IS4.5.0 run (complete — checkpoint saved as `model_14500.pt`):**
+**IS4.5.0 base run (complete — best checkpoint `model_14500.pt`, final `model_15469.pt`):**
 | Script | `tools/train_and_viz_is45.sh` |
 | Python | `~/.venv/isaac45/bin/python` (IS4.5.0 + Isaac Lab 2.1.0) |
-| Iteration | ~14500 |
-| Hit rate | ~94% (plateaued) |
-| Success rate | **>50%** (confirmed in play.py — well above 28% Kyle baseline) |
-| Status | Stopped; checkpoint saved. Next run is a fine-tuning run, not continuation. |
+| Iteration | 15469 (ran past 14500 save point; both checkpoints saved) |
+| Hit rate | ~95.8% (plateaued) |
+| Success rate | ~20–22% (TB) — plateaued; root cause: weak gradient at table boundary |
+| Status | Complete. Fine-tuning now running with rectangular landing_dis reward. |
 
-**Next planned run — fine-tuning from model_14500.pt (actor-only warm start):**
-| Change | `reward_future_landing_dis` threshold: 3.0 → 0.6 |
-| Rationale | See TUNING_LOG 2026-05-27 afternoon session for full research notes |
-| Method | Actor-only warm start: load actor + predictor weights from model_14500.pt, fresh critic |
+**IS4.5.0 fine-tune run (IN PROGRESS — actor-only warm start from model_14500.pt):**
+| Script | `tools/finetune_is45.sh` |
+| Python | `~/.venv/isaac45/bin/python` (IS4.5.0) |
+| Seed | `logs/k1_table_tennis/2026-05-27_20-46-44/model_14500.pt` |
+| Reward change | `reward_future_landing_dis`: circular threshold=3.0 → signed rectangular distance |
+| Load mode | Actor-only: actor + predictor weights loaded, critic re-initialised |
+| Max iters | 10000 (new run starting from iter 0) |
+| Status | **Running in tmux window `is45_train`** (launched 2026-05-28) |
 
 ## Tmux session: `k1_train`
 
@@ -44,7 +48,7 @@ metrics. The most recent session is always at the bottom.
 | 2 | services | noVNC (websockify port 5999 → VNC :1) |
 | 3 | auto_tune | `while true; sleep 900; python3 tools/auto_tune.py` loop |
 | 4 | is45_setup | IS4.5.0 venv setup (complete) |
-| 5 | is45_train | **`train_and_viz_is45.sh --clean`** — IS4.5.0 training, 15k iters |
+| 6 | is45_train | **`finetune_is45.sh`** — IS4.5.0 fine-tune, rectangular landing_dis, actor-only warm start |
 
 ## Key commands
 
@@ -81,7 +85,7 @@ DISPLAY=:1 python3 legged_lab/scripts/play.py \
 - **train_and_viz.sh chunk size** — pass `--max_iterations $VIZ_INTERVAL`, not `$STOP_AT`; RSL-RL's `learn()` adds to checkpoint iter so passing the absolute target causes exponential chunk growth
 - **IsaacSim 5.x degrades success rate** — paper achieved 96%/92% on IsaacSim 4.5.0; we're on 5.1.0 and the authors explicitly warn 5.0+ hurts success rate; hit rate is fine but success plateau may be a simulator issue
 - **TensorBoard success rate is inflated** — `Train/TT_success_rate` uses a position-based zone check, not a physics bounce; actual success rate in play.py is ~17–20% vs 77% shown in TB; hit rate (TB vs play.py) is accurate
-- **`reward_future_landing_dis` threshold=3.0 is too generous for precision fine-tuning** — with threshold=3.0 and weight=60, a ball landing 0.1m outside the table still gets +156 reward vs +180 for a perfect shot; the boundary gradient is near-zero; tighten to 0.6 for precision runs (see TUNING_LOG 2026-05-27)
+- **`reward_future_landing_dis` now uses signed distance to the rectangular table zone** — positive inside, negative outside, zero at any edge; no `threshold` param; see `legged_lab/mdp/rewards.py`. The old circular distance-to-point formulation (threshold=3.0) gave near-zero gradient at the table boundary and rewarded many out-of-bounds shots.
 - **Do not add an out-of-bounds penalty** — the upstream purdue-tracelab repo has `penalty_ball_to_floor` and `penalty_table_fail` commented out; they were tried on this exact system and removed; the PACE paper achieves ≥92% success with positive shaping only
 
 ## auto_tune phases (fires every 15 min, tmux window 3)

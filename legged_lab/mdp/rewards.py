@@ -747,21 +747,24 @@ def reward_future_vel_target(
 
 def reward_future_landing_dis(
     env: TTEnv,
-    threshold: float= 2.0,
+    x_min: float = 0.0,
+    x_max: float = 1.35,
+    y_min: float = -0.7625,
+    y_max: float = 0.7625,
 ) -> torch.Tensor:
-    target_x=1.15
-    target_y=0
-    # Stack into 2D points
-    pred_land = torch.stack([env.predict_x_land, env.predict_y_land], dim=1)
-    target_land = torch.tensor([target_x, target_y], device=pred_land.device)
-    # Compute 2D distance (batch-wise)
-    dist_ball_land = torch.linalg.norm(pred_land - target_land, dim=1)
-    # Reward = negative distance
-    reward = (threshold - dist_ball_land )
-    
-    # reward = torch.where(env.touched_paddel_no_bounce_table, reward, torch.zeros_like(reward)) # continuous
+    # Signed distance to the opponent's table rectangle:
+    #   positive  = distance to nearest edge from inside (in-bounds)
+    #   negative  = distance to nearest edge from outside (miss)
+    # This cleanly gives in=positive, out=negative for any shot regardless of
+    # where on the table it lands, without a circular-distance target point.
+    pred_x = env.predict_x_land
+    pred_y = env.predict_y_land
+    margin_x = torch.min(pred_x - x_min, x_max - pred_x)
+    margin_y = torch.min(pred_y - y_min, y_max - pred_y)
+    reward = torch.min(margin_x, margin_y)  # most-constrained edge
+
     mask = env.ball_landing_dis_rew
-    reward = torch.where(mask, reward, torch.zeros_like(reward)) # sparse
+    reward = torch.where(mask, reward, torch.zeros_like(reward))
     return reward
 
 def reward_future_pass_net(

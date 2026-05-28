@@ -594,8 +594,30 @@ Source: https://arxiv.org/abs/2011.03275
 
 ### Decision: tighten `reward_future_landing_dis` threshold 3.0 → 0.6, actor-only warm start
 
-**What:** Change `params={"threshold": 3.0}` → `params={"threshold": 0.6}` in
-`k1_tt_config.py`. No new reward terms.
+**What:** Rewrite `reward_future_landing_dis` in `legged_lab/mdp/rewards.py` to use
+signed distance to the rectangular table zone instead of circular distance to a point target.
+
+```
+margin_x = min(pred_x - 0.0,    1.35 - pred_x)
+margin_y = min(pred_y - (-0.7625), 0.7625 - pred_y)
+reward   = min(margin_x, margin_y)   # positive inside, negative outside
+```
+
+Table bounds from `tt_env_config.py`: x∈[0.0, 1.35], y∈[-0.7625, +0.7625].
+
+Sanity check (weight=60):
+
+| Landing | margin | reward |
+|---------|--------|--------|
+| Center of table (0.675, 0) | +0.675 | +40.5 |
+| Old target (1.15, 0) | +0.200 | +12.0 |
+| Any table edge/corner | 0.000 | 0.0 |
+| 0.1m past far end | -0.100 | -6.0 |
+| 0.3m wide miss | -0.300 | -18.0 |
+| Into net | -0.300 | -18.0 |
+
+Every table edge gets exactly 0; gradient always points toward table interior.
+No `threshold` parameter needed; removed from `k1_tt_config.py`.
 
 **Why not out-penalty:** Upstream authors tried and removed it. Adding a new term risks
 conflicting gradients. The threshold change addresses the root cause (weak boundary
@@ -616,7 +638,57 @@ accept an `actor_only=True` flag that loads only `actor.*` keys (plus predictor 
 from the checkpoint state dict, skips critic keys, and does not restore the optimizer or
 iteration counter.
 
-### Next step
+### Implementation
 
-Implement threshold change + actor-only warm start patch, then launch fine-tuning run
-from `model_14500.pt`.
+| File | Change |
+|------|--------|
+| `legged_lab/mdp/rewards.py` | Rewrote `reward_future_landing_dis` — signed distance to rectangular zone; removed `threshold` param |
+| `legged_lab/envs/k1_tt/k1_tt_config.py` | Removed `threshold` param from `reward_future_landing_dis` RewTerm |
+| `rsl_rl/rsl_rl/runners/on_policy_predictor_regression_runner.py` | Added `actor_only=True` mode to `load()` |
+| `legged_lab/scripts/train.py` | Added `--actor_only` CLI flag |
+| `tools/finetune_is45.sh` | New script: actor-only warm start from `model_14500.pt`, then normal resume loop |
+
+Fine-tuning run launched in tmux window `is45_train`.
+
+---
+
+## 2026-05-28 — Fine-tune launch (actor-only from model_14500.pt, rectangular landing_dis)
+
+### IS4.5.0 original run final state (model_15469.pt)
+
+Original `train_and_viz_is45.sh` ran to MAX_ITERS=15000 and stopped at iter 15469. The
+training continued past the 14500 save point in the previous session, producing further
+checkpoints (14750, 14970, 15000, 15250, 15469). Both model_14500.pt and model_15469.pt
+are effectively identical in performance — hit rate and success rate plateaued:
+
+| Checkpoint | Hit rate (TB) | Success rate (TB) |
+|------------|--------------|-------------------|
+| model_14500.pt (iter 14500) | ~95.6–95.8% | ~21–23% |
+| model_15469.pt (iter 15469) | ~95.6–95.8% | ~20–22% |
+
+The extra 1000 iterations moved neither metric — confirming the success plateau is a reward
+shaping problem (weak gradient at table boundary), not a training duration problem.
+
+**Note on previously recorded >50% play.py success rate:** This figure was likely measured
+before the `vz < 0` fly-over gate fix (applied 2026-05-27 morning). Post-fix TensorBoard
+and play.py are consistent at ~20–22%.
+
+### Previous fine-tune attempt (PID 342498) — hung and killed
+
+A finetune_is45.sh run was launched at ~23:40 on May 27 but got stuck during Isaac Sim
+initialization. It ran for 8+ hours at 0% GPU utilization and 0 completed training
+iterations. Root cause unknown (likely a torch.compile CPU stall or PhysX CPU fallback
+with 4096 envs). Process killed 2026-05-28 morning.
+
+### Fine-tuning run (re-launch)
+
+Started fresh `finetune_is45.sh` in tmux window `is45_train`. Parameters:
+
+| Parameter | Value |
+|-----------|-------|
+| Seed | `logs/k1_table_tennis/2026-05-27_20-46-44/model_14500.pt` |
+| Load mode | Actor-only (critic re-initialised from scratch) |
+| Reward change | `reward_future_landing_dis`: circular threshold=3.0 → signed rectangular distance |
+| Python | `~/.venv/isaac45/bin/python` (IS4.5.0) |
+| MAX_ITERS | 10000 (iter 0–10000 of new run) |
+| VIZ_INTERVAL | 500 |

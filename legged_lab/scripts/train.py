@@ -35,6 +35,7 @@ parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--predictor", action="store_true", help="Use predictor-augmented runner and train auxiliary predictor")
+parser.add_argument("--actor_only", action="store_true", help="Load only actor weights from checkpoint (critic re-initialised); use when resuming with changed reward weights")
 
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -108,8 +109,10 @@ def train():
         # get path to previous checkpoint
         resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
-        # load previously trained model
-        runner.load(resume_path,load_optimizer=True)
+        actor_only = getattr(args_cli, "actor_only", False)
+        if actor_only:
+            print("[INFO]: actor_only=True — loading actor weights only; critic re-initialised.")
+        runner.load(resume_path, load_optimizer=not actor_only, actor_only=actor_only)
 
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)

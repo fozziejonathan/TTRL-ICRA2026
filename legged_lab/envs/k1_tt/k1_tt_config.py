@@ -182,7 +182,6 @@ class K1TableTennisRewardCfg(RewardCfg):
     reward_future_landing_dis = RewTerm(
         func=mdp.reward_future_landing_dis,
         weight=60.0,
-        params={"threshold": 3.0},
     )
 
     reward_future_pass_net = RewTerm(
