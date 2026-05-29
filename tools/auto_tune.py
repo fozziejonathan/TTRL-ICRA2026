@@ -41,8 +41,14 @@ K1_CFG     = WORKSPACE / "legged_lab/envs/k1_tt/k1_tt_config.py"
 TUNING_LOG = WORKSPACE / "TUNING_LOG.md"
 STATE_FILE = WORKSPACE / "tools" / "auto_tune_state.json"
 
-BASE_TRAIN_CMD = "cd /workspace/TTRL-ICRA2026 && bash tools/continue_is45.sh"
-BASE_TRAIN_CMD_CLEAN = "cd /workspace/TTRL-ICRA2026 && bash tools/finetune_is45.sh"
+# auto_tune interventions are effectively dormant for fine-tune v3 — all phase
+# thresholds (hit<3%, success<5%) are well past. If an intervention ever fires,
+# it restarts training via a direct train.py call rather than the old chunked
+# scripts (chunking was abandoned after the watchdog/set-e overnight failure).
+_PYTHON = "$HOME/.venv/isaac45/bin/python"
+_TRAIN = "legged_lab/scripts/train.py --task k1_tt --num_envs 4096 --headless --logger tensorboard --predictor"
+BASE_TRAIN_CMD = f"cd /workspace/TTRL-ICRA2026 && {_PYTHON} {_TRAIN} --resume True --max_iterations 15000"
+BASE_TRAIN_CMD_CLEAN = f"cd /workspace/TTRL-ICRA2026 && bash tools/finetune_is45.sh"
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 

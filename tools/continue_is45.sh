@@ -1,6 +1,13 @@
 #!/bin/bash
-# Continuation: resumes from the latest IS4.5.0 checkpoint and trains
-# for EXTRA_ITERS more iterations. No VIZ — run play.py manually when needed.
+# RECOVERY UTILITY: resumes from the latest IS4.5.0 checkpoint in chunks.
+#
+# Normal operation: run train.py directly with --max_iterations <target>.
+# Chunking adds complexity and caused an overnight training loss when the
+# watchdog (kill -9) triggered set -e and aborted the loop.
+#
+# Use this script only when you need to resume from a specific checkpoint
+# and can't run a straight train.py call (e.g. after an unexpected crash
+# where the run directory needs to be inferred automatically).
 #
 # Usage:
 #   bash tools/continue_is45.sh [EXTRA_ITERS]

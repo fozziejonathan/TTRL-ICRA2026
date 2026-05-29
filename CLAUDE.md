@@ -40,11 +40,12 @@ metrics. The most recent session is always at the bottom.
 | Best ckpt | `k1_tt_IS4.5_finetune_v2_rect_reward_iter5988_succ37pct.pt` (workspace root) |
 | Status | **Killed 2026-05-29. Seed for fine-tune v3.** |
 
-**IS4.5.0 fine-tune run v3 (PENDING — Gaussian landing reward):**
-| Script | `tools/finetune_is45.sh` (reuse — same actor-only warm start logic) |
-| Seed | `logs/k1_table_tennis/2026-05-27_20-46-44/model_14500.pt` |
-| Reward change | `reward_future_landing_dis`: elliptical Gaussian, σx=0.58, σy=0.65 |
-| Status | **Not yet started — ready to launch** |
+**IS4.5.0 fine-tune run v3 (IN PROGRESS — Gaussian landing reward):**
+| Seed | `logs/k1_table_tennis/2026-05-27_20-46-44/model_14500.pt` (actor-only warm start to iter 499) |
+| Resume from | `logs/k1_table_tennis/2026-05-29_05-51-18/model_499.pt` |
+| Reward | `reward_future_landing_dis`: elliptical Gaussian, σx=0.58, σy=0.65 |
+| Target | iter 15000 — running straight through, no chunking |
+| Status | **Running in tmux window `is45_train`** (direct train.py, launched 2026-05-29) |
 
 **Previous fine-tune attempt (ABANDONED — policy collapsed):**
 | Reward used | Signed rectangular with negatives — caused hitting-avoidance collapse |
@@ -61,7 +62,7 @@ metrics. The most recent session is always at the bottom.
 | 2 | services | noVNC (websockify port 5999 → VNC :1) |
 | 3 | auto_tune | `while true; sleep 900; python3 tools/auto_tune.py` loop |
 | 4 | is45_setup | IS4.5.0 venv setup (complete) |
-| 6 | is45_train | idle — fine-tune v2 killed; ready to launch fine-tune v3 |
+| 6 | is45_train | **fine-tune v3** — direct `train.py` to iter 15000, Gaussian reward |
 
 ## Key commands
 
@@ -95,6 +96,7 @@ DISPLAY=:1 python3 legged_lab/scripts/play.py \
 - **No cron daemon in this container** — auto_tune runs as a tmux sleep loop (window 3), not cron; any log entries referencing cron job IDs are stale
 - **Never resume with changed reward weights** — corrupts the PPO critic (see MorFiC, arXiv:2603.14554); always `--clean` restart when changing weights
 - **VNC rendering disabled by default** — Isaac Sim needs `--/exts/omni.kit.renderer.core/present/enabled=true` to render on display `:1`
+- **Do not chunk training** — chunking (running 500-iter loops) was designed for periodic VIZ which is removed. With `set -euo pipefail`, the watchdog's `kill -9` (exit 137) aborted the loop overnight, wasting 9 hours. Always run `train.py` directly with `--max_iterations <target>`. `finetune_is45.sh` handles only the actor-only warm start; `continue_is45.sh` is a recovery utility only.
 - **train_and_viz.sh chunk size** — pass `--max_iterations $VIZ_INTERVAL`, not `$STOP_AT`; RSL-RL's `learn()` adds to checkpoint iter so passing the absolute target causes exponential chunk growth
 - **IsaacSim 5.x degrades success rate** — paper achieved 96%/92% on IsaacSim 4.5.0; we're on 5.1.0 and the authors explicitly warn 5.0+ hurts success rate; hit rate is fine but success plateau may be a simulator issue
 - **TensorBoard success rate is inflated** — `Train/TT_success_rate` uses a position-based zone check, not a physics bounce; actual success rate in play.py is ~17–20% vs 77% shown in TB; hit rate (TB vs play.py) is accurate

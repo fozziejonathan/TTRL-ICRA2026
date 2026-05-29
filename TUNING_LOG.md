@@ -856,3 +856,47 @@ Read the full PDF. Key points:
 - **Reward updated:** `legged_lab/mdp/rewards.py` and `k1_tt_config.py` now use Gaussian
 - **Fine-tune v3:** actor-only warm start from `model_14500.pt`, same `finetune_is45.sh`
   script, new Gaussian `reward_future_landing_dis` with σx=0.58, σy=0.65
+
+---
+
+## 2026-05-29 — Overnight training loss; chunking abandoned; fine-tune v3 restarted
+
+### Root cause of 9-hour training loss
+
+Fine-tune v3 launched via `finetune_is45.sh` at ~05:51. The actor-only warm start
+completed at iter 499, Isaac Sim hung as expected, and the watchdog correctly
+sent `kill -9`. However, `finetune_is45.sh` uses `set -euo pipefail`. When Python
+exits with code 137 (SIGKILL = 128+9), bash treats it as a script error and aborts.
+The while loop never executed. Training stopped at iter 499 and sat idle for ~9 hours.
+
+**Fix:** Added `|| { ec=$?; [ $ec -eq 137 ] || exit $ec; }` after each `train.py`
+call in `finetune_is45.sh` and `continue_is45.sh`. Exit code 137 is silently swallowed
+(expected SIGKILL from watchdog); all other non-zero exit codes still abort the loop.
+
+### Decision: abandon chunking entirely
+
+The root cause of two separate failures (9-hour hang, overnight abort) was the
+chunking loop. Chunking was designed for periodic VIZ (train 500 iters → visualize
+90s → repeat). VIZ was removed weeks ago due to Isaac Sim SIGTERM hangs. With no
+VIZ, chunking adds complexity with zero benefit:
+
+- RSL-RL saves checkpoints internally every 250 iters — no progress lost on crash
+- Each chunk creates a new run directory, complicating `check_training.py` chaining
+- The watchdog/`set -e` interaction can silently abort the loop
+
+**New approach:** run `train.py` directly with `--max_iterations <target>`. One
+command, one process, no loop. If it hangs at the end, the watchdog kills it and
+nothing is lost (training is done).
+
+`finetune_is45.sh` is now step 1 only (actor-only warm start, 500 iters, then exits
+and prints the next command). `continue_is45.sh` is a recovery utility only.
+
+### Fine-tune v3 current state
+
+| | |
+|---|---|
+| Actor-only warm start | Complete — `logs/k1_table_tennis/2026-05-29_05-51-18/model_499.pt` |
+| Straight run launched | 2026-05-29 15:19 — `train.py --max_iterations 15000` |
+| Resume from | `2026-05-29_05-51-18 / model_499.pt` |
+| Metrics at iter 499 | Hit 73.4% / Success 15.3% (warm-start recovery, expected) |
+| Watchdog | Running in tmux window 4 (`restarter`) |
