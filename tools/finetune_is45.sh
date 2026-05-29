@@ -60,7 +60,7 @@ $PYTHON legged_lab/scripts/train.py \
     --resume True \
     --load_run "$SEED_RUN" \
     --checkpoint "$SEED_CKPT" \
-    --max_iterations "$CHUNK_SIZE"
+    --max_iterations "$CHUNK_SIZE" || { ec=$?; [ $ec -eq 137 ] || exit $ec; }
 
 CURRENT_ITER=$CHUNK_SIZE
 RESUME_RUN=$(latest_run)

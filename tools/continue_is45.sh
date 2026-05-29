@@ -66,7 +66,7 @@ while [ "$CURRENT_ITER" -lt "$END_ITER" ]; do
         --resume True \
         --load_run "$RESUME_RUN" \
         --checkpoint "$RESUME_CKPT" \
-        --max_iterations "$CHUNK_SIZE"
+        --max_iterations "$CHUNK_SIZE" || { ec=$?; [ $ec -eq 137 ] || exit $ec; }
 
     CURRENT_ITER=$STOP_AT
     RESUME_RUN=$(latest_run)
