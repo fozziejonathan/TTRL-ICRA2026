@@ -900,3 +900,18 @@ and prints the next command). `continue_is45.sh` is a recovery utility only.
 | Resume from | `2026-05-29_05-51-18 / model_499.pt` |
 | Metrics at iter 499 | Hit 73.4% / Success 15.3% (warm-start recovery, expected) |
 | Watchdog | Running in tmux window 4 (`restarter`) |
+
+### Fine-tune v3 interim health check (iter 1696, 2026-05-29)
+
+| Metric | Iter 1150 | Iter 1696 | v2 at same point |
+|--------|-----------|-----------|-----------------|
+| Hit rate | 90.9% | 92.2% | ~93% |
+| Success rate | 29.7% | 32.0% | ~33% |
+| landing_dis avg | 0.400 | 0.416 | ~0.217 |
+
+Running clean — one straight train.py process to iter 15000. Trend has moderated
+from the warm-start recovery surge (+13.5%/500 iters at iter 1150) to a steadier
++2.4%/500 iters at iter 1696. This is the zone where v2 plateaued; the higher
+landing_dis avg (0.416 vs v2's 0.217) confirms the Gaussian is providing denser
+gradient on near-misses. Watch for whether success rate continues past 37% over
+the next ~1000 iters — that is the decisive test of the reward change.
