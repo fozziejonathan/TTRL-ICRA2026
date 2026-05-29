@@ -6,3 +6,5 @@ outputs
 logs
 run_bash.sh
 wandb
+# archived checkpoints staged for local download — not for version control
+k1_tt_*.pt

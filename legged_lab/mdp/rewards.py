@@ -747,25 +747,25 @@ def reward_future_vel_target(
 
 def reward_future_landing_dis(
     env: TTEnv,
-    x_min: float = 0.0,
-    x_max: float = 1.35,
-    y_min: float = -0.7625,
-    y_max: float = 0.7625,
+    sigma_x: float = 0.58,
+    sigma_y: float = 0.65,
 ) -> torch.Tensor:
-    # Signed distance to the opponent's table rectangle:
-    #   positive  = distance to nearest edge from inside (in-bounds)
-    #   negative  = distance to nearest edge from outside (miss)
-    # This cleanly gives in=positive, out=negative for any shot regardless of
-    # where on the table it lands, without a circular-distance target point.
-    pred_x = env.predict_x_land
-    pred_y = env.predict_y_land
-    margin_x = torch.min(pred_x - x_min, x_max - pred_x)
-    margin_y = torch.min(pred_y - y_min, y_max - pred_y)
-    reward = torch.clamp(torch.min(margin_x, margin_y), min=0.0)  # positive inside, 0 outside
-
+    # Elliptical Gaussian centred on the opponent's half-table centre (0.675, 0).
+    # sigma_x=0.58 and sigma_y=0.65 are derived so that all four table edges
+    # receive exactly 50% of the centre reward (exp(-0.5*(half_width/sigma)^2)=0.5),
+    # giving a strong, smooth gradient toward the centre from anywhere — inside or
+    # outside the table. No zero-gradient zone, no discontinuity at the boundary.
+    #
+    # Previous rectangular-clamped formulation (clamped to 0 outside) was replaced
+    # because it provided zero gradient for ~64% of shots (all near-misses), causing
+    # fine-tune v2 to plateau at 37% success from iter ~1400 with no improvement
+    # over 6000+ further iterations.
+    cx, cy = 0.675, 0.0  # centre of opponent's half: x=[0,1.35], y=[−0.7625,0.7625]
+    dx = (env.predict_x_land - cx) / sigma_x
+    dy = (env.predict_y_land - cy) / sigma_y
+    reward = torch.exp(-0.5 * (dx * dx + dy * dy))
     mask = env.ball_landing_dis_rew
-    reward = torch.where(mask, reward, torch.zeros_like(reward))
-    return reward
+    return torch.where(mask, reward, torch.zeros_like(reward))
 
 def reward_future_pass_net(
     env: TTEnv,

@@ -762,3 +762,97 @@ provide the hitting incentive.
 | Script | `tools/finetune_is45.sh` (rewritten — no VIZ blocks, MAX_ITERS=15000) |
 
 Launched in tmux window `is45_train` 2026-05-28 evening.
+
+---
+
+## 2026-05-29 — Fine-tune v2 plateau analysis + decision to switch to Gaussian reward
+
+### Fine-tune v2 plateau: per-chunk success rate history
+
+| Iter (end of chunk) | Success rate | Hit rate |
+|---------------------|-------------|---------|
+| 499  | 10.6% | 71.5% |
+| 899  | 26.4% | 89.9% |
+| 1399 | 31.0% | 92.0% |
+| 1899 | 31.8% | 92.5% |
+| 2399 | 32.9% | 93.6% |
+| 2899 | 33.2% | 93.5% |
+| 3399 | 35.5% | 93.8% |
+| 3899 | 36.0% | 93.7% |
+| 4399 | 34.8% | 93.5% |
+| 4899 | 36.2% | 93.8% |
+| 5399 | 36.7% | 93.9% |
+| 5899 | 37.0% | 94.1% |
+| 6399 | 33.6% | 92.9% |
+| 6699 | 35.6% | 93.7% |
+
+Hit rate hit its ceiling (~93–94%) at iter ~1900. Success rate plateaued at 31–37%
+from iter ~1400 with zero sustained improvement over 5,000+ further iterations.
+
+### Root cause: zero gradient for 64% of shots
+
+`reward_future_landing_dis` with the clamped rectangular formulation:
+- Inside table: positive reward (up to 0.675 at centre)
+- Outside table: **exactly zero** — no gradient signal
+
+At 36% success rate, 64% of shots land outside the table. Each of these gets zero
+gradient for landing position. The policy cannot learn "which direction to adjust"
+for a near-miss. More training iterations cannot fix a structural zero-gradient zone.
+
+### Option A rejected: soft exponential decay outside
+
+Proposed `exp(signed_min / sigma)` outside, `signed_min` inside. Found a **massive
+discontinuity at the table boundary**: 1mm inside → reward 0.001; 1mm outside →
+reward 0.997. Creates a perverse incentive to barely miss the table rather than land
+on it. Same discontinuity at the net edge (landing on robot's side gets higher reward
+than landing just inside opponent's side). Rejected.
+
+### Option B selected: elliptical Gaussian
+
+Replace entire reward with an elliptical Gaussian centred on the opponent's half-centre:
+
+```python
+cx, cy = 0.675, 0.0   # centre of x=[0,1.35], y=[−0.7625,0.7625]
+dx = (predict_x_land - cx) / sigma_x
+dy = (predict_y_land - cy) / sigma_y
+reward = exp(-0.5 * (dx**2 + dy**2))
+```
+
+**Sigma derivation (equal 50% edge criterion):**
+Solve `exp(-0.5 × (half_width/σ)²) = 0.5` per axis:
+- σx = 0.675 / sqrt(2 ln 2) = **0.58**  → back/net edges: 50.8% of centre
+- σy = 0.7625 / sqrt(2 ln 2) = **0.65** → side edges: 50.3% of centre
+
+Key reward values at σx=0.58, σy=0.65:
+| Position | Reward |
+|----------|--------|
+| Centre (0.675, 0) | 1.000 |
+| Back/net edge | 0.508 |
+| Side edge | 0.503 |
+| Corner | 0.255 |
+| 10cm outside x | 0.410 |
+| 30cm outside x | 0.243 |
+
+Properties: smooth everywhere, no discontinuity, gradient always points toward (0.675, 0),
+no negative values (no collapse risk). PACE paper (arXiv:2509.21690) describes their
+landing reward as "penalize distance from desired landing position on opponent's side" —
+no explicit formula, no sigma, no curriculum. This Gaussian is the principled
+implementation of that description.
+
+### PACE paper findings
+
+Read the full PDF. Key points:
+- Landing reward: "penalize distance from desired landing position" — no equation given
+- No sigma curriculum or annealing described anywhere
+- The "desired landing position" is a specific target (almost certainly table centre)
+- Only positive shaping is used (no penalties for missing)
+- Curriculum learning is cited in passing (Bengio 2009) but not applied to reward shape
+
+### Decision
+
+- **Kill fine-tune v2** (stuck at 37%, no path to 92% with zero gradient for 64% of shots)
+- **Best checkpoint archived:** `k1_tt_IS4.5_finetune_v2_rect_reward_iter5988_succ37pct.pt`
+  (copied to workspace root; source: `logs/k1_table_tennis/2026-05-29_03-19-03/model_5988.pt`)
+- **Reward updated:** `legged_lab/mdp/rewards.py` and `k1_tt_config.py` now use Gaussian
+- **Fine-tune v3:** actor-only warm start from `model_14500.pt`, same `finetune_is45.sh`
+  script, new Gaussian `reward_future_landing_dis` with σx=0.58, σy=0.65
