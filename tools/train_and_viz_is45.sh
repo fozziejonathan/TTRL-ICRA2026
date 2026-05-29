@@ -123,6 +123,10 @@ while [ "$CURRENT_ITER" -lt "$MAX_ITERS" ]; do
     echo "  Open http://localhost:5999/vnc.html to watch"
     echo "──────────────────────────────────────────────────────────"
 
+    # WARNING: Isaac Sim 4.5 hangs on exit even with timeout --kill-after=10.
+    # This stalls the training loop for hours (confirmed across multiple runs).
+    # Prefer finetune_is45.sh + continue_is45.sh (no VIZ) with watchdog_is45.sh
+    # running in a spare tmux window to auto-kill hung processes.
     DISPLAY=:1 timeout --kill-after=10 "$VIZ_DURATION" \
         $PYTHON legged_lab/scripts/play.py \
             --task "$TASK_EVAL" \

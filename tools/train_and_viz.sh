@@ -133,7 +133,9 @@ while [ "$CURRENT_ITER" -lt "$MAX_ITERS" ]; do
     echo "  VISUALIZATION  ($VIZ_DURATION s) — $RESUME_RUN / $RESUME_CKPT"
     echo "  Open http://localhost:5999/vnc.html to watch"
     echo "──────────────────────────────────────────────────────────"
-
+    # WARNING: Isaac Sim can hang here even after timeout kills play.py if the
+    # PhysX/renderer shutdown stalls. If this happens the loop blocks for hours.
+    # Run watchdog_is45.sh in a separate tmux window to auto-kill hung processes.
     # Isaac Sim ignores SIGTERM; --kill-after=10 escalates to SIGKILL after 10s
     DISPLAY=:1 timeout --kill-after=10 "$VIZ_DURATION" \
         $PYTHON legged_lab/scripts/play.py \

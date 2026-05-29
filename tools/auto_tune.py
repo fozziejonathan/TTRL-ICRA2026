@@ -41,8 +41,8 @@ K1_CFG     = WORKSPACE / "legged_lab/envs/k1_tt/k1_tt_config.py"
 TUNING_LOG = WORKSPACE / "TUNING_LOG.md"
 STATE_FILE = WORKSPACE / "tools" / "auto_tune_state.json"
 
-BASE_TRAIN_CMD = "cd /workspace/TTRL-ICRA2026 && bash tools/train_and_viz.sh"
-BASE_TRAIN_CMD_CLEAN = BASE_TRAIN_CMD + " --clean"
+BASE_TRAIN_CMD = "cd /workspace/TTRL-ICRA2026 && bash tools/continue_is45.sh"
+BASE_TRAIN_CMD_CLEAN = "cd /workspace/TTRL-ICRA2026 && bash tools/finetune_is45.sh"
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -123,18 +123,18 @@ def set_std_h(new_std):
 # ── training control ───────────────────────────────────────────────────────────
 
 def restart_training(run_dir=None, clean=False):
-    """Kill train_and_viz.sh and restart it.
+    """Kill the IS4.5 training loop and restart it.
 
-    clean=True  → pass --clean to train_and_viz.sh for a fresh iter-0 start.
+    clean=True  → run finetune_is45.sh (actor-only warm start from model_14500.pt).
                   Use when reward weights changed (corrupts critic on resume).
-    clean=False → no --clean flag; train_and_viz.sh auto-detects latest
-                  checkpoint and resumes (safe for shaping-only changes).
+    clean=False → run continue_is45.sh (resumes from latest checkpoint).
+                  Safe for shaping-only changes that don't corrupt the critic.
     """
     cmd = BASE_TRAIN_CMD_CLEAN if clean else BASE_TRAIN_CMD
 
-    subprocess.run(["tmux", "send-keys", "-t", "k1_train:0", "C-c", ""], check=False)
+    subprocess.run(["tmux", "send-keys", "-t", "k1_train:is45_train", "C-c", ""], check=False)
     time.sleep(8)
-    subprocess.run(["tmux", "send-keys", "-t", "k1_train:0", cmd, "Enter"], check=False)
+    subprocess.run(["tmux", "send-keys", "-t", "k1_train:is45_train", cmd, "Enter"], check=False)
     mode = "CLEAN" if clean else "RESUME"
     print(f"[auto_tune] Restarted training ({mode}): {cmd}")
 
@@ -216,7 +216,7 @@ def run():
 
     # ── print report ─────────────────────────────────────────────────────────
     print(f"\n{'='*60}")
-    print(f"[auto_tune] Run: {run_name}  |  Iter: {current_iter}/10000")
+    print(f"[auto_tune] Run: {run_name}  |  Iter: {current_iter}")
     if len(hit_vals) >= 10:
         _r20 = mean_last(hit_vals, 20) or 0.0
         _p20 = mean_last(hit_vals[:-20], 20) or 0.0 if len(hit_vals) > 40 else None
