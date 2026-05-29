@@ -16,7 +16,7 @@ def _load_run_events(run_dir, tag):
         return []
 
 
-def collect_chained_events(tag, n=200, max_step_gap=200):
+def collect_chained_events(tag, n=200, max_step_gap=200, skip_warmup=2):
     """Collect last n events for tag across the continuous training chain.
 
     Walks backward through run dirs. A run is included in the chain only if
@@ -25,6 +25,14 @@ def collect_chained_events(tag, n=200, max_step_gap=200):
     creates a new run dir) without pulling in unrelated prior runs (e.g.
     the IS4.5 base run that ended at step 15469 — well outside the fine-tune
     step range).
+
+    skip_warmup: number of events to drop from the START of each older run.
+    Each chunk's first 1-2 TensorBoard events are logged during Isaac Sim
+    initialization before the policy has warmed up, producing near-zero
+    hit/success rates that corrupt trend calculations. The latest (current)
+    run is never trimmed — we need all its data for the current value display.
+    chain_min is always tracked using the FULL step range (including warm-up)
+    so connectivity checks across chunk boundaries are not broken.
     """
     runs = sorted(LOG_ROOT.iterdir()) if LOG_ROOT.exists() else []
     chain = {}        # step -> value; later (more recent) runs win on duplicates
@@ -41,13 +49,19 @@ def collect_chained_events(tag, n=200, max_step_gap=200):
         run_min = min(s for s, _ in events)
 
         if chain_min is None:
+            # Latest run: keep all events (may be the only current data)
             for s, v in events:
                 chain[s] = v
             chain_min = run_min
         elif abs(chain_min - run_max) <= max_step_gap:
-            for s, v in events:
-                if s not in chain:      # newer run's data takes priority
-                    chain[s] = v
+            # Older run: only keep the LAST event (always post-warmup; the first
+            # 1-3 events per chunk are logged during Isaac Sim initialization
+            # before the policy warms up, producing near-zero rates that corrupt
+            # trend calculations). chain_min uses the full step range so
+            # connectivity checks across chunk boundaries are not broken.
+            last_s, last_v = events[-1]
+            if last_s not in chain:
+                chain[last_s] = last_v
             chain_min = min(chain_min, run_min)
         else:
             break  # gap too large — different training run
