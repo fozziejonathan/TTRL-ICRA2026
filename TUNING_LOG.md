@@ -915,3 +915,19 @@ from the warm-start recovery surge (+13.5%/500 iters at iter 1150) to a steadier
 landing_dis avg (0.416 vs v2's 0.217) confirms the Gaussian is providing denser
 gradient on near-misses. Watch for whether success rate continues past 37% over
 the next ~1000 iters — that is the decisive test of the reward change.
+
+### Fine-tune v3 health check (iter 7362, 2026-05-29)
+
+| Metric | Iter 1696 | Iter 7362 | v2 at same point |
+|--------|-----------|-----------|-----------------|
+| Hit rate | 92.2% | 91.9% | ~93% |
+| Success rate | 32.0% | 36.3% | ~37% (plateau) |
+| landing_dis avg | 0.416 | 0.443 | ~0.217 |
+| trend (success/500 iters) | +2.4% | +0.9% | ~0% (stuck) |
+
+Process alive and healthy (tmux window 6, ClosestPass batches streaming). At
++0.9%/500 iters v3 is within ~1% of the v2 plateau ceiling (37%). The critical
+difference: landing_dis avg 0.443 vs v2's ~0.217 at this stage — the Gaussian is
+providing twice the gradient signal on near-misses. v2 was already frozen at
+this iter count; v3 still has positive trend. If success crosses ~38–40% over the
+next 500–1000 iters, the reward change is confirmed effective.
