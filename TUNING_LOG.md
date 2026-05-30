@@ -931,3 +931,62 @@ difference: landing_dis avg 0.443 vs v2's ~0.217 at this stage — the Gaussian 
 providing twice the gradient signal on near-misses. v2 was already frozen at
 this iter count; v3 still has positive trend. If success crosses ~38–40% over the
 next 500–1000 iters, the reward change is confirmed effective.
+
+---
+
+## 2026-05-30 — Fine-tune v3 concluded: plateau confirmed, run killed at iter 10750
+
+### Full TB trajectory (sampled ~every 500 iters)
+
+| Iter | Success rate | Hit rate |
+|------|-------------|----------|
+| 999 | 29.4% | — |
+| 1499 | 31.9% | — |
+| 1999 | 34.0% | — |
+| 2499 | 33.7% | — |
+| 2999 | 34.4% | — |
+| 3499 | 34.5% | — |
+| 3999 | 34.4% | — |
+| 4499 | 35.5% | — |
+| 4999 | 35.5% | — |
+| 5499 | 35.7% | — |
+| 5999 | 35.8% | — |
+| 6499 | 35.5% | — |
+| 6999 | 35.2% | — |
+| 7499 | 36.5% | — |
+| 7999 | 36.0% | — |
+| **8499** | **36.8% ← peak** | ~92% |
+| 8999 | 36.4% | — |
+| 9499 | 36.4% | — |
+| 9999 | 35.3% | — |
+| 10499 | 35.6% | — |
+
+### Conclusion
+
+**Plateau confirmed — same ceiling as v2, different shape.** From iter 2000 onward
+(8500+ iters) the success rate oscillated between 34–37% without breaking through.
+The Gaussian reward provides ~2× landing_dis avg vs v2 (0.44 vs 0.22), confirming
+dense gradient on near-misses — but the ceiling did not move.
+
+Root cause is structural, not reward-shape limited. The Gaussian fixed the zero-gradient
+zone (v2's failure mode) but exposed a deeper constraint: the policy cannot convert
+near-table hits into on-table landings at a higher rate regardless of shaping. The
+37% ceiling appears to be a limit of the current architecture/physics setup.
+
+**Best checkpoint archived:**
+- Source: `logs/k1_table_tennis/2026-05-29_15-19-30/model_8500.pt` (iter 8499, 36.8% success)
+- Archive: `k1_tt_IS4.5_finetune_v3_gaussian_iter8500_succ37pct.pt` (workspace root)
+
+Run killed at iter ~10750 (early stop — remaining 4250 iters had zero path to improvement).
+
+### What to try in v4
+
+The 37% ceiling is consistent across v2 (rect reward) and v3 (Gaussian reward) with
+identical weights. Options to break it:
+1. **Tighter Gaussian** (σx~0.29, σy~0.33) — stronger pull toward table centre; costs a
+   clean restart
+2. **Higher success_weight** (100 → 150) — directly reward the terminal outcome more;
+   costs a clean restart
+3. **Curriculum on σ** — start tight, widen over training to maintain gradient everywhere
+4. **Rethink the trajectory predictor** — if predicted landing is systematically biased,
+   shaping the predicted landing position may be the wrong lever entirely

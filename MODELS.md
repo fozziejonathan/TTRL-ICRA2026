@@ -1,5 +1,22 @@
 # Saved Models
 
+## k1_tt_IS4.5_finetune_v3_gaussian_iter8500_succ37pct.pt — IS4.5.0 fine-tune v3 best
+
+| | |
+|---|---|
+| Filename | `k1_tt_IS4.5_finetune_v3_gaussian_iter8500_succ37pct.pt` |
+| Run | `2026-05-29_15-19-30` |
+| Iteration | 8500 |
+| IsaacSim version | **4.5.0** |
+| Isaac Lab version | 2.1.0 |
+| Hit rate | ~92% (TensorBoard) |
+| Success rate | **36.8%** (TensorBoard — peak of v3 run) |
+| Reward | `landing_dis`: elliptical Gaussian σx=0.58, σy=0.65 |
+| Reward weights | contact=150, table_success=100, pass_net=100, landing_dis=60 |
+| Notes | Best checkpoint of fine-tune v3. Plateaued 34–37% from iter 2000 onward (8500+ iters); ceiling structural, not reward-shaped. Gaussian provided 2× gradient signal vs v2 rect reward but same ~37% ceiling. Run killed at iter 10750. |
+
+---
+
 ## model_14500.pt — IsaacSim 4.5.0 (active best)
 
 | | |

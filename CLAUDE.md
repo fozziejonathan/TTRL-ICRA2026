@@ -11,7 +11,7 @@ Branch: `feature/k1-tt`. Goal: ≥96% hit rate, ≥92% success rate.
 bug fix, and training run. The top section has the reconnect checklist and morning health
 metrics. The most recent session is always at the bottom.
 
-## Current training state (last updated 2026-05-29)
+## Current training state (last updated 2026-05-30)
 
 **IS5.1.0 run (complete, saved):**
 
@@ -40,12 +40,14 @@ metrics. The most recent session is always at the bottom.
 | Best ckpt | `k1_tt_IS4.5_finetune_v2_rect_reward_iter5988_succ37pct.pt` (workspace root) |
 | Status | **Killed 2026-05-29. Seed for fine-tune v3.** |
 
-**IS4.5.0 fine-tune run v3 (IN PROGRESS — Gaussian landing reward):**
+**IS4.5.0 fine-tune run v3 (ABANDONED — plateaued 34–37%, same ceiling as v2):**
 | Seed | `logs/k1_table_tennis/2026-05-27_20-46-44/model_14500.pt` (actor-only warm start to iter 499) |
 | Resume from | `logs/k1_table_tennis/2026-05-29_05-51-18/model_499.pt` |
 | Reward | `reward_future_landing_dis`: elliptical Gaussian, σx=0.58, σy=0.65 |
-| Target | iter 15000 — running straight through, no chunking |
-| Status | **Running in tmux window `is45_train`** (direct train.py, launched 2026-05-29) |
+| Peak | iter ~8499: 36.8% success / ~92% hit |
+| Plateau | iter 2000 → 10750: oscillating 34–37%, ceiling structural not reward-shaped |
+| Best ckpt | `k1_tt_IS4.5_finetune_v3_gaussian_iter8500_succ37pct.pt` (workspace root) |
+| Status | **Killed 2026-05-30 at iter ~10750. See TUNING_LOG for v4 options.** |
 
 **Previous fine-tune attempt (ABANDONED — policy collapsed):**
 | Reward used | Signed rectangular with negatives — caused hitting-avoidance collapse |
@@ -62,7 +64,7 @@ metrics. The most recent session is always at the bottom.
 | 2 | services | noVNC (websockify port 5999 → VNC :1) |
 | 3 | auto_tune | `while true; sleep 900; python3 tools/auto_tune.py` loop |
 | 4 | is45_setup | IS4.5.0 venv setup (complete) |
-| 6 | is45_train | **fine-tune v3** — direct `train.py` to iter 15000, Gaussian reward |
+| 6 | is45_train | idle (v3 killed 2026-05-30 at iter ~10750) |
 
 ## Key commands
 
@@ -105,6 +107,7 @@ DISPLAY=:1 python3 legged_lab/scripts/play.py \
 - **Do not use a soft exponential decay outside (Option A)** — has a discontinuity at the table boundary: reward jumps from ~0.001 (1mm inside) to ~0.997 (1mm outside). Creates a perverse incentive to barely miss the table. The Gaussian (Option B) avoids this entirely.
 - **Rectangular clamped reward plateaued at 37%** — fine-tune v2 used `max(signed_rect_dist, 0)` and stuck at 31–37% success from iter 1400 onward (5000+ iters of zero progress). Root cause: 64% of shots land outside the table and get zero gradient. Gaussian provides gradient everywhere.
 - **Do not add an out-of-bounds penalty** — the upstream purdue-tracelab repo has `penalty_ball_to_floor` and `penalty_table_fail` commented out; they were tried on this exact system and removed; the PACE paper achieves ≥92% success with positive shaping only
+- **Gaussian landing reward did not break the 37% ceiling** — fine-tune v3 confirmed that the plateau is structural, not reward-shape limited. Both v2 (rect, zero-gradient outside) and v3 (Gaussian, gradient everywhere) converged to the same 34–37% band. v4 needs a fundamentally different approach (tighter σ, higher success_weight, or curriculum).
 
 ## auto_tune phases (fires every 15 min, tmux window 3)
 
