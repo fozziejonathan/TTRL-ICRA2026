@@ -11,6 +11,30 @@
 
 import argparse
 import os
+import re
+import typing
+
+# Pre-import typing_extensions from the venv (4.15.0) so that sys.modules caches it
+# before Isaac Sim's extension loader prepends its pip_prebundle path and tries to
+# import the bundled 4.11.0. Once cached, the bundled version's module code never runs.
+# Then patch typing._collect_type_vars to be permissive so isaaclab_tasks loads despite
+# having TypeVar ordering that violates PEP 696 strict enforcement.
+import typing_extensions as _te  # noqa: F401 — side effect: caches venv version in sys.modules
+_strict_ctv = getattr(typing, '_collect_type_vars', None)
+if _strict_ctv is not None:
+    def _permissive_ctv(types, typevar_types=None):
+        try:
+            return _strict_ctv(types, typevar_types) if typevar_types is not None else _strict_ctv(types)
+        except TypeError:
+            if typevar_types is None:
+                typevar_types = typing.TypeVar
+            seen: list = []
+            for t in types:
+                if isinstance(t, typevar_types) and t not in seen:
+                    seen.append(t)
+            return tuple(seen)
+    typing._collect_type_vars = _permissive_ctv
+
 import numpy as np
 
 import torch
@@ -49,9 +73,39 @@ app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
 from isaaclab_rl.rsl_rl import export_policy_as_jit, export_policy_as_onnx
-from isaaclab_tasks.utils import get_checkpoint_path
 
 from legged_lab.envs import *  # noqa:F401, F403
+
+
+def get_checkpoint_path(
+    log_path: str, run_dir: str = ".*", checkpoint: str = ".*", other_dirs=None, sort_alpha: bool = True
+) -> str:
+    """Find the latest matching checkpoint under log_path/run_dir[/other_dirs]/checkpoint.
+
+    Local re-implementation — avoids importing isaaclab_tasks, which fails to load
+    at Isaac Sim startup due to a TypeVar ordering conflict in its bundled typing_extensions.
+    """
+    try:
+        runs = [
+            os.path.join(log_path, entry.name)
+            for entry in os.scandir(log_path)
+            if entry.is_dir() and re.match(run_dir, entry.name)
+        ]
+        if sort_alpha:
+            runs.sort()
+        else:
+            runs = sorted(runs, key=os.path.getmtime)
+        run_path = os.path.join(runs[-1], *other_dirs) if other_dirs is not None else runs[-1]
+    except IndexError:
+        raise ValueError(f"No runs in '{log_path}' match run_dir='{run_dir}'.")
+
+    model_checkpoints = [f for f in os.listdir(run_path) if re.match(checkpoint, f)]
+    if not model_checkpoints:
+        raise ValueError(f"No checkpoints in '{run_path}' match checkpoint='{checkpoint}'.")
+    model_checkpoints.sort(key=lambda m: f"{m:0>15}")
+    return os.path.join(run_path, model_checkpoints[-1])
+
+
 from legged_lab.utils.cli_args import update_rsl_rl_cfg
 
 

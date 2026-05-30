@@ -309,14 +309,18 @@ BOOSTER_K1_TT_CFG = ArticulationCfg(
             angular_damping=0.0,
             max_linear_velocity=1000.0,
             max_angular_velocity=1000.0,
-            max_depenetration_velocity=1.0,
+            max_depenetration_velocity=5.0,  # raised from 1.0: faster recovery if feet clip floor on reset
+        ),
+        collision_props=sim_utils.CollisionPropertiesCfg(
+            contact_offset=0.02,  # 2cm shadow above collision shape so floor contact detected before penetration
+            rest_offset=0.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
             enabled_self_collisions=False, solver_position_iteration_count=8, solver_velocity_iteration_count=4
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(-1.6, 0.0, 0.72),
+        pos=(-1.6, 0.0, 0.55),
         joint_pos={
             "AAHead_yaw": 0.0,
             "Head_pitch": 0.0,

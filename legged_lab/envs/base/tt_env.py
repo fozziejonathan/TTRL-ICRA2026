@@ -188,8 +188,8 @@ class TTEnv(VecEnv):
             render_interval=cfg.sim.decimation,
             physx=PhysxCfg(gpu_max_rigid_patch_count=cfg.sim.physx.gpu_max_rigid_patch_count),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                friction_combine_mode="min", 
-                restitution_combine_mode="min", 
+                friction_combine_mode="min",
+                restitution_combine_mode="min",
                 restitution=0.8,
             ),
         )
@@ -816,7 +816,9 @@ class TTEnv(VecEnv):
         self.reset_ball(env_ids)
 
         self.scene.write_data_to_sim()
-        self.sim.forward()
+        _ = self.robot.data.body_state_w  # flush GPU Fabric transform buffer
+        for _ in range(5):
+            self.sim.step(render=False)  # run contact solver (forward() skips it)
 
     def reset_ball(self, env_ids):
         """Reset only the ball state for specified environments."""

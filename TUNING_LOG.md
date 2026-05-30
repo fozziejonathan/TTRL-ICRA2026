@@ -990,3 +990,58 @@ identical weights. Options to break it:
 3. **Curriculum on σ** — start tight, widen over training to maintain gradient everywhere
 4. **Rethink the trajectory predictor** — if predicted landing is systematically biased,
    shaping the predicted landing position may be the wrong lever entirely
+
+---
+
+## 2026-05-30 — Visualization fixed; pod shutdown; v4 next
+
+### Visualization work (play.py in IS4.5.0)
+
+Two blocking bugs fixed before play.py would load:
+
+**Bug 1: isaaclab_tasks typing_extensions hang**
+Isaac Sim's extension loader prepends its bundled pip_prebundle path (typing_extensions
+4.11.0) and the strict TypeVar ordering check fires on isaaclab_tasks imports, hanging
+the extension manager. Fix: patch the two `raise TypeError` calls to `pass` in the
+bundled typing_extensions.py. This is a venv-level patch — must re-apply after pod
+restart (command in CLAUDE.md new-pod section).
+
+**Bug 2: omni.physx.fabric version mismatch (floor collision)**
+omni.physx.fabric-106.5.3 has `exact = true` pin for omni.physx-106.5.3, but
+omni.physx.tensors-106.5.7 forces physx-106.5.7. The mismatch caused IS4.5.0 to hang
+when play.py started. Fix: relax `exact = true` in extension.toml (also venv-level,
+also in new-pod instructions).
+
+**Residual issue: feet fall through floor after resets**
+physx fabric ABI mismatch (106.5.3 vs 106.5.7) causes floor contact detection to
+degrade after several episodes. Workarounds applied (body_state_w flush, 5 sim.step
+settling, contact_offset=0.02, spawn z=0.55 near floor level) — extends stable
+window from 1 episode to ~5–10 episodes before degradation. Not fully solved; a
+matching physx.fabric-106.5.7 does not exist in the installed exts.
+
+**Code changes (committed):**
+- `legged_lab/scripts/play.py`: removed isaaclab_tasks import; local get_checkpoint_path; pre-import typing_extensions workaround
+- `legged_lab/envs/base/tt_env.py`: body_state_w flush + 5 sim.step settling on reset
+- `legged_lab/assets/booster/booster.py`: collision_props contact_offset=0.02, max_depenetration_velocity=5.0, spawn z=0.55
+
+### Play.py evaluation results (model_8500.pt, iter 8499)
+
+With working visualization, 9 serves observed:
+- Hit rate: **100%** (ball-paddle ClosestPass avg 3.1mm — robot hits every ball)
+- Success rate: **~55–62%** (ball lands on opponent's table)
+- ClosestPass: 1–5mm consistently → very clean hits
+
+This is substantially better than TensorBoard's 36% success plateau. The TB metric
+used a zone check without velocity gate; play.py adds `vz < 0` which is more accurate.
+
+Video captured: `k1_tt_policy_viz.mp4` (90 sec, workspace root).
+
+### What's next (v4)
+
+Three serious options for breaking the 37% TensorBoard / ~60% play.py ceiling:
+1. **Tighter Gaussian** σx~0.29, σy~0.33 — stronger pull to table centre; clean restart needed
+2. **Higher success_weight** (100 → 150); clean restart needed
+3. **Curriculum on σ** — start tight, widen over training
+
+Seed for v4: `k1_tt_IS4.5_finetune_v3_gaussian_iter8500_succ37pct.pt` (workspace root)
+or `logs/k1_table_tennis/2026-05-27_20-46-44/model_14500.pt` (IS4.5 base, for fresh start).

@@ -11,7 +11,7 @@ Branch: `feature/k1-tt`. Goal: ≥96% hit rate, ≥92% success rate.
 bug fix, and training run. The top section has the reconnect checklist and morning health
 metrics. The most recent session is always at the bottom.
 
-## Current training state (last updated 2026-05-30)
+## Current training state (last updated 2026-05-30 — pod shutting down)
 
 **IS5.1.0 run (complete, saved):**
 
@@ -65,6 +65,46 @@ metrics. The most recent session is always at the bottom.
 | 3 | auto_tune | `while true; sleep 900; python3 tools/auto_tune.py` loop |
 | 4 | is45_setup | IS4.5.0 venv setup (complete) |
 | 6 | is45_train | idle (v3 killed 2026-05-30 at iter ~10750) |
+
+## ⚠️ New pod setup — REQUIRED venv patches
+
+The IS4.5 venv has two patches that **must be re-applied after every pod restart** (they live on the container filesystem, not in git):
+
+### Patch 1 — typing_extensions strict TypeVar check (prevents isaaclab_tasks hang)
+```bash
+python3 - <<'PYEOF'
+path = "/root/.venv/isaac45/lib/python3.10/site-packages/omni/data/Kit/Isaac-Sim/4.5/exts/3/omni.kit.pip_archive-0.0.0+d02c707b.lx64.cp310/pip_prebundle/typing_extensions.py"
+with open(path) as f:
+    lines = f.readlines()
+patched = 0
+for i, line in enumerate(lines):
+    if "raise TypeError(f'Type parameter {t!r} without a default'" in line:
+        lines[i] = line.replace(
+            "raise TypeError(f'Type parameter {t!r} without a default'",
+            "pass  # patched-typevar-check  #\nif False:  # patched"
+        )
+        if i+1 < len(lines) and "follows type parameter with a default" in lines[i+1]:
+            lines[i+1] = lines[i+1].replace("' follows type parameter with a default')", "pass")
+        patched += 1
+with open(path, 'w') as f:
+    f.writelines(lines)
+print(f"Patched {patched} occurrences")
+PYEOF
+```
+
+### Patch 2 — physx.fabric version pin (prevents floor-collision crash)
+```bash
+sed -i 's/"omni.physx" = { version = "106.5.3", exact = true }/"omni.physx" = { version = "106.5.3" }/' \
+  /root/.local/share/ov/data/exts/v2/omni.physx.fabric-106.5.3+106.5.0.lx64.r.cp310.ub3f/config/extension.toml
+```
+
+After both patches, launch viz with:
+```bash
+DISPLAY=:1 ~/.venv/isaac45/bin/python legged_lab/scripts/play.py \
+    --task k1_tt_eval --num_envs 1 --predictor \
+    --load_run 2026-05-29_15-19-30 --checkpoint model_8500.pt \
+    --/exts/omni.kit.renderer.core/present/enabled=true
+```
 
 ## Key commands
 
