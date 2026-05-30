@@ -1045,3 +1045,6 @@ Three serious options for breaking the 37% TensorBoard / ~60% play.py ceiling:
 
 Seed for v4: `k1_tt_IS4.5_finetune_v3_gaussian_iter8500_succ37pct.pt` (workspace root)
 or `logs/k1_table_tennis/2026-05-27_20-46-44/model_14500.pt` (IS4.5 base, for fresh start).
+
+### Jonathan's personal notes:
+So I kind of forgot to save fine-tune v3 model weights, so I'd have to run that again. However, I'm curious to see if the previous approach with rectangular rewards (v2) performed as well as v3 as the erroneous success metrics said they both had around 37% success rate. So I'd like to visualize that. I also want to try getting everything back onto IS5.1.0 since IS4.5.0 is so buggy. Then, I see two divergent branches. First, get the robots to play each other in sim. Second, try like a MoE for strategy. If the opponent gets pushed into a very tight corner, hit to the other. Stuff like that. Ciao!
